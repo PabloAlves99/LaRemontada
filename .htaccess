@@ -1,0 +1,6 @@
+DirectoryIndex index.php
+AddType application/javascript .js .mjs
+Options -Indexes
+<FilesMatch "^(config\.local\.php|.*\.(sqlite|db|log|json|sql))$">
+Require all denied
+</FilesMatch>
