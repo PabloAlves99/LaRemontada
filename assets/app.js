@@ -775,7 +775,7 @@ function playerModal(p = {}) {
   function toggle() {
     const enabled = $("#provisionalCheck").checked;
     $("#provisionalFields").hidden = !enabled;
-    $$("input", $$("#provisionalFields")).forEach(
+    $$("input", $("#provisionalFields")).forEach(
       (x) => (x.disabled = !enabled),
     );
   }
