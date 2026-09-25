@@ -108,46 +108,65 @@ try {
     postOnly();
 
     if ($action === 'playerStatus') {
-        query('UPDATE players SET active=? WHERE id=?',[!empty($b['active'])?1:0,textValue($b['id']??'',40)]);result(['ok'=>true]);
+        query('UPDATE players SET active=? WHERE id=?', [!empty($b['active']) ? 1 : 0, textValue($b['id'] ?? '', 40)]);
+        result(['ok' => true]);
     }
     if ($action === 'playerDelete') {
-        $id=textValue($b['id']??'',40);database()->beginTransaction();
-        query('DELETE FROM reviews WHERE player_id=?',[$id]);query('DELETE FROM players WHERE id=?',[$id]);database()->commit();result(['ok'=>true]);
+        $id = textValue($b['id'] ?? '', 40);
+        database()->beginTransaction();
+        query('DELETE FROM reviews WHERE player_id=?', [$id]);
+        query('DELETE FROM players WHERE id=?', [$id]);
+        database()->commit();
+        result(['ok' => true]);
     }
-    if (in_array($action,['reviewEdit','reviewStatus','reviewDelete'],true)) {
-        $id=filter_var($b['id']??null,FILTER_VALIDATE_INT);
-        if(!$id||!query('SELECT id FROM reviews WHERE id=?',[$id])->fetch())fail('Avaliação não encontrada.',404);
-        if($action==='reviewEdit')query('UPDATE reviews SET scores=?,edited_by=?,edited_at=? WHERE id=?',[encode(scores($b['scores']??null)),$u['name'],gmdate('c'),$id]);
-        if($action==='reviewStatus')query('UPDATE reviews SET active=? WHERE id=?',[!empty($b['active'])?1:0,$id]);
-        if($action==='reviewDelete')query('DELETE FROM reviews WHERE id=?',[$id]);
-        result(['ok'=>true]);
+    if (in_array($action, ['reviewEdit', 'reviewStatus', 'reviewDelete'], true)) {
+        $id = filter_var($b['id'] ?? null, FILTER_VALIDATE_INT);
+        if (!$id || !query('SELECT id FROM reviews WHERE id=?', [$id])->fetch()) fail('Avaliação não encontrada.', 404);
+        if ($action === 'reviewEdit') query('UPDATE reviews SET scores=?,edited_by=?,edited_at=? WHERE id=?', [encode(scores($b['scores'] ?? null)), $u['name'], gmdate('c'), $id]);
+        if ($action === 'reviewStatus') query('UPDATE reviews SET active=? WHERE id=?', [!empty($b['active']) ? 1 : 0, $id]);
+        if ($action === 'reviewDelete') query('DELETE FROM reviews WHERE id=?', [$id]);
+        result(['ok' => true]);
     }
     if ($action === 'inviteEdit') {
-        $id=textValue($b['id']??'',64);$label=textValue($b['label']??'');database()->beginTransaction();
-        query('UPDATE invites SET label=?,active=? WHERE id=?',[$label,!empty($b['active'])?1:0,$id]);
-        query('UPDATE reviews SET label=? WHERE evaluator=?',[$label,'invite:'.$id]);database()->commit();result(['ok'=>true]);
+        $id = textValue($b['id'] ?? '', 64);
+        $label = textValue($b['label'] ?? '');
+        database()->beginTransaction();
+        query('UPDATE invites SET label=?,active=? WHERE id=?', [$label, !empty($b['active']) ? 1 : 0, $id]);
+        query('UPDATE reviews SET label=? WHERE evaluator=?', [$label, 'invite:' . $id]);
+        database()->commit();
+        result(['ok' => true]);
     }
-    if ($action === 'inviteDelete') {query('DELETE FROM invites WHERE id=?',[textValue($b['id']??'',64)]);result(['ok'=>true]);}
+    if ($action === 'inviteDelete') {
+        query('DELETE FROM invites WHERE id=?', [textValue($b['id'] ?? '', 64)]);
+        result(['ok' => true]);
+    }
     if ($action === 'adminEdit') {
-        if(!$u['owner'])fail('Somente o responsável pode gerenciar acessos.',403);
-        $id=textValue($b['id']??'',40);$target=query('SELECT * FROM admins WHERE id=?',[$id])->fetch();
-        if(!$target)fail('Administrador não encontrado.',404);
-        $name=textValue($b['name']??'');$email=strtolower(textValue($b['email']??'',190));$active=!empty($b['active'])?1:0;
-        if(!filter_var($email,FILTER_VALIDATE_EMAIL))fail('E-mail inválido.');
-        if($target['owner']&&!$active)fail('O responsável deve manter o acesso ativo.');
-        if(query('SELECT id FROM admins WHERE email=? AND id<>?',[$email,$id])->fetch())fail('Este e-mail já está em uso.');
-        $pass=$b['password']??'';if($pass!==''&&strlen(textValue($pass,128))<10)fail('Use pelo menos 10 caracteres na senha.');
-        database()->beginTransaction();query('UPDATE admins SET name=?,email=?,active=? WHERE id=?',[$name,$email,$active,$id]);
-        if($pass!=='')query('UPDATE admins SET password=? WHERE id=?',[password_hash($pass,PASSWORD_DEFAULT),$id]);
-        database()->commit();result(['ok'=>true]);
+        if (!$u['owner']) fail('Somente o responsável pode gerenciar acessos.', 403);
+        $id = textValue($b['id'] ?? '', 40);
+        $target = query('SELECT * FROM admins WHERE id=?', [$id])->fetch();
+        if (!$target) fail('Administrador não encontrado.', 404);
+        $name = textValue($b['name'] ?? '');
+        $email = strtolower(textValue($b['email'] ?? '', 190));
+        $active = !empty($b['active']) ? 1 : 0;
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) fail('E-mail inválido.');
+        if ($target['owner'] && !$active) fail('O responsável deve manter o acesso ativo.');
+        if (query('SELECT id FROM admins WHERE email=? AND id<>?', [$email, $id])->fetch()) fail('Este e-mail já está em uso.');
+        $pass = $b['password'] ?? '';
+        if ($pass !== '' && strlen(textValue($pass, 128)) < 10) fail('Use pelo menos 10 caracteres na senha.');
+        database()->beginTransaction();
+        query('UPDATE admins SET name=?,email=?,active=? WHERE id=?', [$name, $email, $active, $id]);
+        if ($pass !== '') query('UPDATE admins SET password=? WHERE id=?', [password_hash($pass, PASSWORD_DEFAULT), $id]);
+        database()->commit();
+        result(['ok' => true]);
     }
-    if (in_array($action,['roundStatus','roundDelete'],true)) {
-        $date=textValue($b['date']??'',10);$old=query('SELECT updated FROM rounds WHERE date=?',[$date])->fetch();
-        if(!$old)fail('Rodada não encontrada.',404);
-        if(($b['version']??null)!==$old['updated'])fail('A rodada mudou. Atualize a página antes de continuar.',409);
-        if($action==='roundDelete')query('DELETE FROM rounds WHERE date=? AND updated=?',[$date,$old['updated']]);
-        else query('UPDATE rounds SET published=?,updated=? WHERE date=? AND updated=?',[!empty($b['published'])?1:0,gmdate('c').'.'.bin2hex(random_bytes(4)),$date,$old['updated']]);
-        result(['ok'=>true]);
+    if (in_array($action, ['roundStatus', 'roundDelete'], true)) {
+        $date = textValue($b['date'] ?? '', 10);
+        $old = query('SELECT updated FROM rounds WHERE date=?', [$date])->fetch();
+        if (!$old) fail('Rodada não encontrada.', 404);
+        if (($b['version'] ?? null) !== $old['updated']) fail('A rodada mudou. Atualize a página antes de continuar.', 409);
+        if ($action === 'roundDelete') query('DELETE FROM rounds WHERE date=? AND updated=?', [$date, $old['updated']]);
+        else query('UPDATE rounds SET published=?,updated=? WHERE date=? AND updated=?', [!empty($b['published']) ? 1 : 0, gmdate('c') . '.' . bin2hex(random_bytes(4)), $date, $old['updated']]);
+        result(['ok' => true]);
     }
 
     if ($action === 'player') {
@@ -176,11 +195,11 @@ try {
         $rules = $b['rules'] ?? [];
         if (!in_array($rules['weak'] ?? null, [1, 1.5, 2, 2.5, 3], true) || !in_array($rules['history'] ?? null, [3, 6, 10], true)) fail('Critérios inválidos.');
         putSetting('keepers', $keepers);
-        $distribution=$rules['distribution']??'balanced';
-        if(!in_array($distribution,['balanced','mixed','random'],true))fail('Distribuição inválida.');
-        $savedRules=['distribution'=>$distribution,'weak'=>$rules['weak'],'history'=>$rules['history']];
-        foreach(['useRating','useCriteria','usePosition','separateWeak','useHistory','avoidSameTeam'] as $flag)$savedRules[$flag]=(bool)($rules[$flag]??true);
-        putSetting('rules',$savedRules);
+        $distribution = $rules['distribution'] ?? 'balanced';
+        if (!in_array($distribution, ['balanced', 'mixed', 'random'], true)) fail('Distribuição inválida.');
+        $savedRules = ['distribution' => $distribution, 'weak' => $rules['weak'], 'history' => $rules['history']];
+        foreach (['useRating', 'useCriteria', 'usePosition', 'separateWeak', 'useHistory', 'avoidSameTeam'] as $flag) $savedRules[$flag] = (bool)($rules[$flag] ?? true);
+        putSetting('rules', $savedRules);
         result(['ok' => true]);
     }
     if ($action === 'adminAdd') {
@@ -223,9 +242,9 @@ try {
         if (!$dt || $dt->format('Y-m-d') !== $date) fail('Data inválida.');
         $teams = $b['teams'] ?? [];
         if (count($teams) !== 3) fail('São necessários três times.');
-        $previous=query('SELECT data FROM rounds WHERE date=?',[$date])->fetchColumn();
-        $knownHistorical=[];
-        if($previous)foreach(json_decode($previous,true)['teams'] as $team)foreach($team as $member)$knownHistorical[$member['id']]=true;
+        $previous = query('SELECT data FROM rounds WHERE date=?', [$date])->fetchColumn();
+        $knownHistorical = [];
+        if ($previous) foreach (json_decode($previous, true)['teams'] as $team) foreach ($team as $member) $knownHistorical[$member['id']] = true;
         $seen = [];
         $clean = [];
         foreach ($teams as $team) {

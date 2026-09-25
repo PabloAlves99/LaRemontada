@@ -143,13 +143,20 @@ function startSession(): void
     if (!isset($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
 }
 
-function migrateManagement(PDO $db): void {
- $changes=['admins'=>['active'=>'INTEGER NOT NULL DEFAULT 1'],'reviews'=>['active'=>'INTEGER NOT NULL DEFAULT 1','edited_by'=>"TEXT NOT NULL DEFAULT ''",'edited_at'=>"TEXT NOT NULL DEFAULT ''"]];
- foreach($changes as $table=>$columns){
-  $present=array_column($db->query("PRAGMA table_info($table)")->fetchAll(),'name');
-  if(!array_diff(array_keys($columns),$present))continue;
-  $db->exec('BEGIN IMMEDIATE');
-  try{$present=array_column($db->query("PRAGMA table_info($table)")->fetchAll(),'name');foreach($columns as $name=>$type)if(!in_array($name,$present,true))$db->exec("ALTER TABLE $table ADD COLUMN $name $type");$db->exec('COMMIT');}
-  catch(Throwable $e){$db->exec('ROLLBACK');throw $e;}
- }
+function migrateManagement(PDO $db): void
+{
+    $changes = ['admins' => ['active' => 'INTEGER NOT NULL DEFAULT 1'], 'reviews' => ['active' => 'INTEGER NOT NULL DEFAULT 1', 'edited_by' => "TEXT NOT NULL DEFAULT ''", 'edited_at' => "TEXT NOT NULL DEFAULT ''"]];
+    foreach ($changes as $table => $columns) {
+        $present = array_column($db->query("PRAGMA table_info($table)")->fetchAll(), 'name');
+        if (!array_diff(array_keys($columns), $present)) continue;
+        $db->exec('BEGIN IMMEDIATE');
+        try {
+            $present = array_column($db->query("PRAGMA table_info($table)")->fetchAll(), 'name');
+            foreach ($columns as $name => $type) if (!in_array($name, $present, true)) $db->exec("ALTER TABLE $table ADD COLUMN $name $type");
+            $db->exec('COMMIT');
+        } catch (Throwable $e) {
+            $db->exec('ROLLBACK');
+            throw $e;
+        }
+    }
 }

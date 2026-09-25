@@ -4,8 +4,8 @@ Aplicativo local em PHP 8.1+ e SQLite, sem Node.js, npm ou serviços externos.
 
 ## Primeiro acesso
 
-Se estiver em C:\Apache24\htdocs\la-remontada, acesse:
-http://localhost:8090/la-remontada/?view=admin
+Se estiver em C:\Apache24\htdocs\laRemontada, acesse:
+http://localhost:8090/laRemontada/?view=admin
 
 O Apache desta máquina está configurado na porta 8090. Se estiver parado, inicie-o pelo procedimento que você já usa.
 
@@ -55,7 +55,7 @@ Em Ajustes, use Baixar banco de dados. O arquivo contém jogadores, notas, convi
 
 Para restaurar:
 1. Pare o acesso ao app e faça uma cópia do banco atual.
-2. Substitua storage/la-remontada.sqlite pelo backup, preservando esse nome.
+2. Substitua storage/laRemontada.sqlite pelo backup, preservando esse nome.
 3. Reabra o app. O acesso inicial e as senhas serão os que estavam no backup.
 
 Não compartilhe o banco com o grupo. Não envie a pasta storage/sessions para a hospedagem.
@@ -67,12 +67,12 @@ Requisitos: PHP 8.1 ou superior, extensões pdo_sqlite, sqlite3, mbstring e sess
 1. Faça um backup e configure sua conta local antes da transferência.
 2. Envie index.php, api.php, app/, assets/ e .htaccess para a pasta pública escolhida. Preserve os arquivos .htaccess ocultos.
 3. Preferencialmente crie uma pasta privada fora de public_html para o banco.
-4. Copie o backup para essa pasta com o nome la-remontada.sqlite.
+4. Copie o backup para essa pasta com o nome laRemontada.sqlite.
 5. Copie config.example.php como config.local.php na raiz pública e configure storage_path com o caminho absoluto da pasta privada.
 6. Dê ao processo PHP acesso de escrita a essa pasta, sem liberar escrita irrestrita.
 7. Habilite HTTPS. A sessão usa cookie seguro quando o servidor informa HTTPS.
 8. Confira login, publicação, link de avaliação e backup.
-9. Verifique que /storage/la-remontada.sqlite e /app/bootstrap.php respondem 403. Nunca publique o banco se ele puder ser baixado diretamente.
+9. Verifique que /storage/laRemontada.sqlite e /app/bootstrap.php respondem 403. Nunca publique o banco se ele puder ser baixado diretamente.
 
 Não é necessário migrar para MySQL para este grupo. Confirme a disponibilidade de pdo_sqlite no plano antes do envio. Não foi realizada publicação ou configuração na Hostinger.
 
@@ -91,7 +91,7 @@ A aplicação é entregue sem jogadores fictícios e sem credenciais padrão. Os
 
 ## Instalação na pasta do Apache
 
-Execute INSTALAR-NO-APACHE.cmd. Ele copia o app para C:\Apache24\htdocs\la-remontada sem apagar arquivos. Se já existir index.php no destino, ele interrompe para evitar sobrescrever uma instalação.
+Execute INSTALAR-NO-APACHE.cmd. Ele copia o app para C:\Apache24\htdocs\laRemontada sem apagar arquivos. Se já existir index.php no destino, ele interrompe para evitar sobrescrever uma instalação.
 
 ## Reexecutar testes
 
