@@ -100,7 +100,7 @@ try {
         $file = $dir . '/backup-' . identifier() . '.sqlite';
         database()->exec("VACUUM INTO " . database()->quote($file));
         header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="la-remontada-' . date('Y-m-d') . '.sqlite"');
+        header('Content-Disposition: attachment; filename="LaRemontada-' . date('Y-m-d') . '.sqlite"');
         readfile($file);
         unlink($file);
         exit;

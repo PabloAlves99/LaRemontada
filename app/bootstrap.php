@@ -13,7 +13,7 @@ function database(): PDO
     if ($db) return $db;
     $c = configuration();
     if (!is_dir($c['storage_path'])) mkdir($c['storage_path'], 0700, true);
-    $db = new PDO('sqlite:' . $c['storage_path'] . '/la-remontada.sqlite');
+    $db = new PDO('sqlite:' . $c['storage_path'] . '/LaRemontada.sqlite');
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $db->exec('PRAGMA busy_timeout=5000');

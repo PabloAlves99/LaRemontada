@@ -236,7 +236,7 @@ try {
     "Proteção CSRF",
   );
   check(
-    (await fetch(origin + "/storage/la-remontada.sqlite")).status === 403,
+    (await fetch(origin + "/storage/LaRemontada.sqlite")).status === 403,
     "Banco bloqueado para download direto",
   );
   check(
