@@ -31,6 +31,8 @@ function initialize(PDO $db): void
             'CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL, evaluator TEXT NOT NULL, label TEXT NOT NULL, scores TEXT NOT NULL, created TEXT NOT NULL)',
             'CREATE INDEX IF NOT EXISTS idx_reviews_player ON reviews(player_id,evaluator,id)',
             'CREATE TABLE IF NOT EXISTS rounds (date TEXT PRIMARY KEY, data TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0, updated TEXT NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS attendance (round_date TEXT NOT NULL, player_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'confirmed\', updated TEXT NOT NULL, PRIMARY KEY (round_date,player_id), FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE)',
+            'CREATE INDEX IF NOT EXISTS idx_attendance_player ON attendance(player_id,round_date)',
             'CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS login_attempts (id TEXT PRIMARY KEY, attempts INTEGER NOT NULL, started INTEGER NOT NULL)'
         ] as $sql
@@ -116,6 +118,24 @@ function allRounds(bool $public = false): array
         if ($public) $data['teams'] = array_map(fn($t) => array_map(fn($p) => ['id' => $p['id'], 'name' => $p['name'], 'position' => $p['position'] ?? '', 'guest' => $p['guest'] ?? false], $t), $data['teams']);
         return $data;
     }, $rs);
+}
+function attendanceFor(string $date): array
+{
+    return rows('SELECT player_id,status FROM attendance WHERE round_date=? ORDER BY player_id', [$date]);
+}
+function attendanceStats(): array
+{
+    return rows("SELECT p.id, COUNT(a.player_id) AS confirmed FROM players p LEFT JOIN attendance a ON a.player_id=p.id AND a.status='confirmed' GROUP BY p.id");
+}
+function automaticBackup(): void
+{
+    $dir = configuration()['storage_path'] . '/automatic-backups';
+    if (!is_dir($dir)) mkdir($dir, 0700, true);
+    $file = $dir . '/before-change-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.sqlite';
+    database()->exec('VACUUM INTO ' . database()->quote($file));
+    $files = glob($dir . '/*.sqlite') ?: [];
+    usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
+    foreach (array_slice($files, 12) as $old) unlink($old);
 }
 function admin(): array
 {

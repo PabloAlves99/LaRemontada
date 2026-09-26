@@ -94,7 +94,7 @@ try {
         result(['ok' => true]);
     }
     $u = admin();
-    if ($action === 'admin') result(['players' => allPlayers(), 'reviews' => rows('SELECT * FROM reviews ORDER BY id DESC'), 'rounds' => allRounds(), 'invites' => rows('SELECT id,label,active,created FROM invites ORDER BY created DESC'), 'admins' => rows('SELECT id,email,name,owner,active FROM admins ORDER BY owner DESC,name'), 'keepers' => setting('keepers', ['', '', '']), 'rules' => setting('rules', ['weak' => 2, 'separatePivot' => true, 'history' => 6])]);
+    if ($action === 'admin') result(['players' => allPlayers(), 'reviews' => rows('SELECT * FROM reviews ORDER BY id DESC'), 'rounds' => allRounds(), 'invites' => rows('SELECT id,label,active,created FROM invites ORDER BY created DESC'), 'admins' => rows('SELECT id,email,name,owner,active FROM admins ORDER BY owner DESC,name'), 'keepers' => setting('keepers', ['', '', '']), 'rules' => setting('rules', ['weak' => 2, 'separatePivot' => true, 'history' => 6]), 'attendance' => rows('SELECT round_date,player_id,status FROM attendance ORDER BY round_date DESC'), 'attendanceStats' => attendanceStats()]);
     if ($action === 'backup') {
         $dir = configuration()['storage_path'];
         $file = $dir . '/backup-' . identifier() . '.sqlite';
@@ -107,12 +107,35 @@ try {
     }
     postOnly();
 
+    if ($action === 'attendance') {
+        $date = (string)($b['date'] ?? '');
+        $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if (!$dt || $dt->format('Y-m-d') !== $date) fail('Data inválida.');
+        $statuses = $b['statuses'] ?? [];
+        if (!is_array($statuses)) fail('Presenças inválidas.');
+        database()->beginTransaction();
+        try {
+            query('DELETE FROM attendance WHERE round_date=?', [$date]);
+            foreach ($statuses as $id => $status) {
+                if (!is_string($id) || !in_array($status, ['confirmed', 'maybe'], true)) fail('Presença inválida.');
+                if (!query('SELECT id FROM players WHERE id=? AND active=1', [$id])->fetch()) fail('Jogador não encontrado.', 404);
+                query('INSERT INTO attendance (round_date,player_id,status,updated) VALUES (?,?,?,?)', [$date, $id, $status, gmdate('c')]);
+            }
+            database()->commit();
+        } catch (Throwable $e) {
+            if (database()->inTransaction()) database()->rollBack();
+            throw $e;
+        }
+        result(['ok' => true]);
+    }
+
     if ($action === 'playerStatus') {
         query('UPDATE players SET active=? WHERE id=?', [!empty($b['active']) ? 1 : 0, textValue($b['id'] ?? '', 40)]);
         result(['ok' => true]);
     }
     if ($action === 'playerDelete') {
         $id = textValue($b['id'] ?? '', 40);
+        automaticBackup();
         database()->beginTransaction();
         query('DELETE FROM reviews WHERE player_id=?', [$id]);
         query('DELETE FROM players WHERE id=?', [$id]);
@@ -164,7 +187,10 @@ try {
         $old = query('SELECT updated FROM rounds WHERE date=?', [$date])->fetch();
         if (!$old) fail('Rodada não encontrada.', 404);
         if (($b['version'] ?? null) !== $old['updated']) fail('A rodada mudou. Atualize a página antes de continuar.', 409);
-        if ($action === 'roundDelete') query('DELETE FROM rounds WHERE date=? AND updated=?', [$date, $old['updated']]);
+        if ($action === 'roundDelete') {
+            automaticBackup();
+            query('DELETE FROM rounds WHERE date=? AND updated=?', [$date, $old['updated']]);
+        }
         else query('UPDATE rounds SET published=?,updated=? WHERE date=? AND updated=?', [!empty($b['published']) ? 1 : 0, gmdate('c') . '.' . bin2hex(random_bytes(4)), $date, $old['updated']]);
         result(['ok' => true]);
     }

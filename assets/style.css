@@ -1063,6 +1063,25 @@ input[type="date"] {
   flex-wrap: wrap;
   margin-top: 12px;
 }
+.attendance-list {
+  display: grid;
+  gap: 8px;
+  max-height: 54vh;
+  overflow: auto;
+  margin: 18px 0;
+  padding-right: 4px;
+}
+.attendance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #d8e1d4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8faf5;
+}
+.attendance-row select { min-width: 145px; }
 .history-card .actions {
   margin-top: 14px;
 }

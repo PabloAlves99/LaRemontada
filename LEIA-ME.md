@@ -22,6 +22,12 @@ No primeiro acesso, crie a senha do administrador PabloHAlves99@gmail.com. Nenhu
 5. Sorteie, use a seta de cada jogador para trocar posições entre times ou preencher convidados e publique.
 6. Compartilhe a página principal com o grupo. Somente times publicados e histórico são exibidos.
 
+## Presença, painel e compartilhamento
+
+Na aba Rodada, use **Presenças** para marcar quem confirmou ou ainda está como talvez em cada data. O botão **Usar confirmados** leva a lista diretamente ao sorteio; a seleção manual continua disponível.
+
+A aba **Painel** reúne as confirmações registradas, o relatório de equilíbrio da rodada aberta e permite baixar as estatísticas em CSV. No compartilhamento dos times, **Baixar card** cria uma imagem PNG pronta para encaminhar no WhatsApp, sem notas ou avaliações.
+
 Os links localhost só funcionam no computador que executa o app. Para outras pessoas acessarem, use a hospedagem ou um endereço de rede acessível a elas. Links criados localmente precisarão usar o novo domínio após a transferência; mantenha a mesma parte ?avaliar=... para preservar o convite.
 
 ## Avaliações
@@ -52,6 +58,8 @@ Uma proteção evita sobrescrever alterações salvas por outro administrador.
 ## Backup e restauração
 
 Em Ajustes, use Baixar banco de dados. O arquivo contém jogadores, notas, convites, acessos (senhas em hash) e rodadas. Guarde-o em local privado.
+
+Antes de excluir um jogador ou uma rodada, o sistema cria um backup automático. Mantém os 12 mais recentes em `storage/automatic-backups`; eles também devem ser tratados como arquivos privados.
 
 Para restaurar:
 1. Pare o acesso ao app e faça uma cópia do banco atual.

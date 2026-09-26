@@ -303,6 +303,10 @@ function renderAdmin() {
       "A história do jogo.",
       "As formações que já passaram pelo nosso futebol.",
     ],
+    painel: [
+      "O termômetro da turma.",
+      "Presenças, equilíbrio da próxima rodada e dados para decidir melhor.",
+    ],
     ajustes: [
       "Do nosso jeito.",
       "Goleiros, critérios e quem organiza a partida.",
@@ -322,6 +326,7 @@ function renderAdmin() {
       jogadores: "Jogadores",
       avaliacoes: "Avaliações",
       historico: "Histórico",
+      painel: "Painel",
       ajustes: "Ajustes",
     })
       .map(
@@ -362,6 +367,7 @@ function renderAdmin() {
     jogadores: renderPlayers,
     avaliacoes: renderReviews,
     historico: renderHistory,
+    painel: renderDashboard,
     ajustes: renderSettings,
   })[tab]();
 }
@@ -1912,6 +1918,113 @@ editMember = function (t, i) {
   };
   $("#modalBody").append(remove);
 };
+
+function attendanceMap(forDate = date) {
+  return Object.fromEntries(
+    (data.attendance || [])
+      .filter((a) => a.round_date === forDate)
+      .map((a) => [a.player_id, a.status]),
+  );
+}
+function manageAttendance() {
+  const statuses = attendanceMap();
+  openModal(
+    '<h2>Confirmação de presença</h2><p class="muted">Organize a lista da rodada de ' +
+      esc(day(date)) +
+      '.</p><form id="attendanceForm"><div class="attendance-list">' +
+      data.players
+        .filter((p) => p.active)
+        .map(
+          (p) =>
+            '<label class="field attendance-row"><span>' +
+            esc(p.name) +
+            '</span><select name="' +
+            p.id +
+            '"><option value="">Sem resposta</option><option value="confirmed" ' +
+            (statuses[p.id] === 'confirmed' ? 'selected' : '') +
+            '>Confirmado</option><option value="maybe" ' +
+            (statuses[p.id] === 'maybe' ? 'selected' : '') +
+            '>Talvez</option></select></label>',
+        )
+        .join('') +
+      '</div><button class="button dark">Salvar confirmações</button></form>',
+  );
+  $('#attendanceForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const statuses = {};
+    for (const [id, value] of new FormData(e.target)) if (value) statuses[id] = value;
+    if (await manageAction('attendance', { date, statuses }, 'Presenças salvas.')) {
+      modal.close();
+      renderRound();
+    }
+  };
+}
+function renderDashboard() {
+  const stats = Object.fromEntries((data.attendanceStats || []).map((s) => [s.id, Number(s.confirmed)]));
+  const confirmed = Object.values(attendanceMap()).filter((s) => s === 'confirmed').length;
+  const report = round
+    ? round.teams.map((team, i) => ({
+        team: i + 1,
+        average: strength(team),
+        rated: team.filter((p) => p.scores).length,
+        positions: positions.filter((pos) => team.some((p) => p.position === pos)).join(', ') || 'Sem posição',
+      }))
+    : [];
+  $('#content').innerHTML =
+    '<div class="summary"><div><strong>' + confirmed + '</strong><span>Confirmados para ' + esc(day(date)) + '</span></div><div><strong>' + data.rounds.filter((r) => r.published).length + '</strong><span>Rodadas publicadas</span></div><div><strong>' + data.players.filter((p) => p.count).length + '</strong><span>Jogadores avaliados</span></div></div>' +
+    '<div class="panel"><div class="panel-head"><div><h2>Presença da rodada</h2><p class="muted">Confirme a lista antes de sortear.</p></div>' + button('Gerenciar presença', 'attendance', 'dark') + '</div><p class="screen-note">Use “Confirmados” na aba Rodada para levar a lista direto ao sorteio.</p></div>' +
+    '<div class="panel"><div class="panel-head"><h2>Participação confirmada</h2>' + button('Baixar CSV', 'exportCsv') + '</div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Confirmações</th><th>Avaliações</th></tr></thead><tbody>' +
+    data.players.filter((p) => p.active).sort((a,b) => (stats[b.id] || 0) - (stats[a.id] || 0) || a.name.localeCompare(b.name)).map((p) => '<tr><td>' + esc(p.name) + '</td><td>' + (stats[p.id] || 0) + '</td><td>' + p.count + '</td></tr>').join('') +
+    '</tbody></table></div></div>' +
+    (report.length ? '<div class="panel"><h2>Relatório de equilíbrio — rodada atual</h2><div class="table-wrap"><table><thead><tr><th>Time</th><th>Média</th><th>Com nota</th><th>Posições</th></tr></thead><tbody>' + report.map((r) => '<tr><td>Time ' + r.team + '</td><td>' + num(r.average) + '</td><td>' + r.rated + '/6</td><td>' + esc(r.positions) + '</td></tr>').join('') + '</tbody></table></div><p class="notice">' + (warnings(round.teams, data.rules).map(esc).join('<br>') || 'Nenhum alerta nas preferências selecionadas.') + '</p></div>' : '<div class="panel"><h2>Relatório de equilíbrio</h2><p class="muted">Sorteie uma rodada para comparar os times aqui.</p></div>');
+  $('[data-action=attendance]').onclick = manageAttendance;
+  $('[data-action=exportCsv]').onclick = exportCsv;
+}
+function exportCsv() {
+  const totals = Object.fromEntries((data.attendanceStats || []).map((s) => [s.id, s.confirmed]));
+  const lines = [['Jogador', 'Posição', 'Confirmações', 'Avaliações', 'Média']].concat(
+    data.players.map((p) => [p.name, p.position, totals[p.id] || 0, p.count, mean(p.scores)?.toFixed(1) || '']),
+  );
+  const csv = '\uFEFF' + lines.map((row) => row.map((v) => '"' + String(v ?? '').replaceAll('"', '""') + '"').join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'la-remontada-estatisticas.csv'; a.click(); URL.revokeObjectURL(url);
+}
+const originalRoundWithAttendance = renderRound;
+renderRound = function () {
+  originalRoundWithAttendance();
+  const actions = $('#content .round-roster .actions');
+  if (!actions) return;
+  const attendance = attendanceMap();
+  const confirmed = Object.entries(attendance).filter(([, status]) => status === 'confirmed').map(([id]) => id);
+  const presence = document.createElement('div');
+  presence.className = 'management-actions';
+  presence.innerHTML = button('Presenças (' + confirmed.length + ')', 'attendance', 'small') + button('Usar confirmados', 'confirmed', 'small');
+  actions.after(presence);
+  $('[data-action=attendance]', presence).onclick = manageAttendance;
+  $('[data-action=confirmed]', presence).onclick = () => {
+    if (confirmed.length > 18) { toast('Há mais de 18 confirmados. Ajuste a lista manualmente.'); return; }
+    selected = new Set(confirmed); renderRound();
+  };
+};
+const originalShareTeams = shareTeams;
+shareTeams = function (r) {
+  originalShareTeams(r);
+  const actions = $('#teamMessage').closest('.field').nextElementSibling;
+  const imageButton = document.createElement('button');
+  imageButton.className = 'button'; imageButton.textContent = 'Baixar card';
+  imageButton.onclick = () => downloadTeamCard(r);
+  actions.append(imageButton);
+};
+function downloadTeamCard(r) {
+  const canvas = document.createElement('canvas'), scale = 2, w = 1080, h = 1320;
+  canvas.width = w * scale; canvas.height = h * scale;
+  const c = canvas.getContext('2d'); c.scale(scale, scale);
+  c.fillStyle = '#101c1b'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#c9f96b'; c.font = '800 38px Arial'; c.fillText('⚽  LA REMONTADA', 60, 85);
+  c.fillStyle = '#f4f9ed'; c.font = '700 30px Arial'; c.fillText(day(r.date).toUpperCase(), 60, 132);
+  r.teams.forEach((team, i) => { const x = 60 + i * 340; c.fillStyle = '#20352e'; c.fillRect(x, 185, 300, 1030); c.fillStyle = '#c9f96b'; c.font = '800 27px Arial'; c.fillText('TIME ' + (i + 1), x + 24, 235); c.fillStyle = '#b4bdb6'; c.font = '18px Arial'; c.fillText('GOLEIRO: ' + (r.keepers?.[i] || 'A definir'), x + 24, 275); c.fillStyle = '#f4f9ed'; c.font = '22px Arial'; team.forEach((p, n) => c.fillText((n + 1) + '. ' + p.name.slice(0, 22), x + 24, 335 + n * 105)); });
+  const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'la-remontada-' + r.date + '.png'; a.click();
+}
 
 load().catch((err) => {
   app.innerHTML =
