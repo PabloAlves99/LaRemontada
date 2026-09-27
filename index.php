@@ -14,7 +14,7 @@ header('X-Content-Type-Options: nosniff');
     <meta name="description" content="Os times, a turma e a história do nosso futebol de terça.">
     <link rel="icon" href="assets/favicon.svg">
     <link rel="stylesheet" href="assets/style.css?v=4">
-    <script type="module" src="assets/app.js?v=4"></script>
+    <script type="module" src="assets/app.js?v=7"></script>
 </head>
 
 <body>

@@ -45,9 +45,11 @@ let session = {},
   publicRounds = [],
   publicDate = "",
   evaluation = {},
-  saving = false;
+  saving = false,
+  playerSort = "name";
 const app = $("#app"),
   modal = $("#modal");
+const isMaster = () => Boolean(session.user?.owner) && session.user?.email === "pablohalves99@gmail.com";
 function toast(t) {
   $("#toast").textContent = t;
   $("#toast").classList.add("show");
@@ -703,13 +705,21 @@ function renderPlayers() {
     ps.filter((p) => p.count).length +
     "</strong><span>Já avaliados</span></div><div><strong>" +
     ps.filter((p) => !p.scores).length +
-    '</strong><span>Ainda sem nota</span></div></div><div class="panel"><div class="panel-head"><input id="searchPlayers" type="search" placeholder="Buscar jogador" aria-label="Buscar jogador">' +
+    '</strong><span>Ainda sem nota</span></div></div><div class="panel"><div class="panel-head"><div class="actions"><input id="searchPlayers" type="search" placeholder="Buscar jogador" aria-label="Buscar jogador"><label class="field compact">Ordenar por<select id="playerSort"><option value="name">Nome</option><option value="position">Posição</option><option value="rating">Maior média</option><option value="reviews">Mais avaliações</option><option value="frequency">Frequência</option></select></label></div>' +
     button("+ Novo jogador", "new", "dark") +
     '</div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Posição</th><th>Nota final</th><th>Avaliações</th><th>Ações</th></tr></thead><tbody id="playerRows"></tbody></table></div></div>';
   function list(q = "") {
     $("#playerRows").innerHTML =
       data.players
         .filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
+        .sort((a, b) => {
+          const rating = (p) => mean(p.scores) ?? -1;
+          if (playerSort === "rating") return rating(b) - rating(a) || a.name.localeCompare(b.name);
+          if (playerSort === "reviews") return b.count - a.count || a.name.localeCompare(b.name);
+          if (playerSort === "frequency") return Number(b.frequent) - Number(a.frequent) || a.name.localeCompare(b.name);
+          if (playerSort === "position") return (a.position || "zz").localeCompare(b.position || "zz") || a.name.localeCompare(b.name);
+          return a.name.localeCompare(b.name);
+        })
         .map(
           (p) =>
             "<tr><td><b>" +
@@ -726,11 +736,11 @@ function renderPlayers() {
             p.count +
             ' pessoa(s)</td><td><div class="actions"><button class="button small" data-pedit="' +
             p.id +
-            '">Editar</button><button class="button small" data-rate="' +
+            '">Editar</button><button class="button small" data-detail="' +
             p.id +
-            '">Avaliar</button><button class="button small" data-detail="' +
-            p.id +
-            '">Notas</button></div></td></tr>',
+            '">Notas</button>' +
+            (isMaster() ? '<button class="button small" data-rate="' + p.id + '">Avaliar</button>' : '') +
+            '</div></td></tr>',
         )
         .join("") || '<tr><td colspan="5">Nenhum jogador encontrado.</td></tr>';
     $$("[data-pedit]").forEach(
@@ -751,6 +761,11 @@ function renderPlayers() {
   }
   list();
   $("#searchPlayers").oninput = (e) => list(e.target.value);
+  $("#playerSort").value = playerSort;
+  $("#playerSort").onchange = (e) => {
+    playerSort = e.target.value;
+    list($("#searchPlayers").value);
+  };
   $("[data-action=new]").onclick = () => playerModal();
 }
 function playerModal(p = {}) {
@@ -1100,7 +1115,7 @@ function renderSettings() {
           esc(a.email) +
           "</small></div>" +
           (a.owner
-            ? '<span class="pill green">Responsável</span>'
+            ? '<span class="pill green">Master</span>'
             : session.user.owner
               ? '<button class="button small danger" data-remove="' +
                 a.id +
@@ -1109,7 +1124,7 @@ function renderSettings() {
           "</div>",
       )
       .join("") +
-    (session.user.owner && data.admins.length < 3
+    (data.admins.length < 3
       ? '<div class="divider"></div>' +
         button("+ Adicionar administrador", "addAdmin")
       : "") +
@@ -1138,7 +1153,7 @@ function renderSettings() {
   if ($("[data-action=addAdmin]"))
     $("[data-action=addAdmin]").onclick = () => {
       openModal(
-        '<h2>Adicionar administrador</h2><form id="adminForm"><label class="field">Nome<input name="name" required maxlength="100"></label><label class="field">E-mail<input name="email" type="email" required></label><label class="field">Senha inicial<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><small>Ao entrar, a pessoa pode alterar a própria senha.</small></label><button class="button dark">Adicionar acesso</button></form>',
+        '<h2>Adicionar administrador</h2><p class="muted">O novo acesso pode administrar o app e cadastrar usuários, mas só visualiza as avaliações. Apenas o Master altera notas.</p><form id="adminForm"><label class="field">Nome<input name="name" required maxlength="100"></label><label class="field">E-mail<input name="email" type="email" required></label><label class="field">Senha inicial<input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><small>Ao entrar, a pessoa pode alterar a própria senha.</small></label><button class="button dark">Adicionar acesso</button></form>',
       );
       $("#adminForm").onsubmit = async (e) => {
         e.preventDefault();
@@ -1292,10 +1307,41 @@ async function manageAction(action, body, message) {
     return false;
   }
 }
-function shareTeams(r) {
-  const text = teamsText(r);
+function teamsTextForVote(r) {
+  return [
+    "⚽ LA REMONTADA — PRÉVIA PARA VOTAÇÃO",
+    day(r.date),
+    "Notas: média geral de cada jogador.",
+    ...r.teams.map((team, i) =>
+      [
+        "TIME " + (i + 1),
+        ...(r.keepers?.[i] ? ["Goleiro: " + r.keepers[i]] : []),
+        ...team.map((p, n) => {
+          if (!p.scores) return n + 1 + ". " + p.name + " — sem nota";
+          const scores = p.scores.map((score) => Number(score));
+          return (
+            n +
+            1 +
+            ". " +
+            p.name +
+            " — média " +
+            num(mean(scores))
+          );
+        }),
+      ].join("\n"),
+    ),
+  ].join("\n\n");
+}
+function shareTeams(r, withScores = false) {
+  const text = withScores ? teamsTextForVote(r) : teamsText(r);
   openModal(
-    '<h2>Enviar os times</h2><p class="muted">Texto com os nomes e goleiros, sem notas ou avaliações.</p>' +
+    '<h2>' +
+      (withScores ? "Enviar prévia para votação" : "Enviar os times") +
+      '</h2><p class="muted">' +
+      (withScores
+        ? "Inclui as notas da rodada para a diretoria votar antes da publicação."
+        : "Texto com os nomes e goleiros, sem notas ou avaliações.") +
+      "</p>" +
       (!r.published
         ? '<p class="notice warning">Esta divisão ainda não foi publicada. Copiar não salva a rodada.</p>'
         : "") +
@@ -1334,9 +1380,11 @@ renderRound = function () {
   bar.className = "management-actions";
   bar.innerHTML =
     button("Enviar times sem notas", "textTeams", "primary") +
+    button("Enviar nomes e notas", "textTeamsWithScores", "dark") +
     button("Editar goleiros desta rodada", "roundKeepers");
   $("#content .panel-head").after(bar);
   $("[data-action=textTeams]").onclick = () => shareTeams(round);
+  $("[data-action=textTeamsWithScores]").onclick = () => shareTeams(round, true);
   $("[data-action=roundKeepers]").onclick = () => {
     openModal(
       '<h2>Goleiros desta rodada</h2><form id="roundKeeperForm">' +
@@ -1451,15 +1499,19 @@ detailModal = function (p) {
                 (n, i) => "<span>" + criteria[i] + ": <b>" + n + "</b></span>",
               )
               .join("") +
-            '</div><div class="management-actions"><button class="button small" data-reviewedit="' +
-            r.id +
-            '">Editar notas</button><button class="button small" data-reviewstatus="' +
-            r.id +
-            '">' +
-            (disabled ? "Reativar" : "Desativar") +
-            '</button><button class="button small danger" data-reviewdelete="' +
-            r.id +
-            '">Excluir</button></div></article>'
+            '</div>' +
+            (isMaster()
+              ? '<div class="management-actions"><button class="button small" data-reviewedit="' +
+                r.id +
+                '">Editar notas</button><button class="button small" data-reviewstatus="' +
+                r.id +
+                '">' +
+                (disabled ? "Reativar" : "Desativar") +
+                '</button><button class="button small danger" data-reviewdelete="' +
+                r.id +
+                '">Excluir</button></div>'
+              : '') +
+            '</article>'
           );
         })
         .join("") || "<p>Nenhuma avaliação recebida.</p>") +
@@ -1535,6 +1587,14 @@ detailModal = function (p) {
 const originalReviews = renderReviews;
 renderReviews = function () {
   originalReviews();
+  if (!isMaster()) {
+    $("[data-action=invite]")?.remove();
+    $$('[data-review]').forEach((button) => button.remove());
+    const note = document.createElement("p");
+    note.className = "screen-note";
+    note.textContent = "Você tem acesso somente para visualizar as avaliações. Apenas o administrador Master pode alterá-las.";
+    $("#content").prepend(note);
+  }
   $$(".table-wrap tbody tr").forEach((tr, i) => {
     const inv = data.invites[i];
     if (!inv) return;
@@ -1675,7 +1735,7 @@ renderHistory = function () {
 const originalSettings = renderSettings;
 renderSettings = function () {
   originalSettings();
-  if (session.user.owner)
+  if (isMaster())
     $$("#content .eval-player").forEach((row, i) => {
       const a = data.admins[i];
       if (!a) return;
@@ -2007,8 +2067,8 @@ renderRound = function () {
   };
 };
 const originalShareTeams = shareTeams;
-shareTeams = function (r) {
-  originalShareTeams(r);
+shareTeams = function (r, withScores = false) {
+  originalShareTeams(r, withScores);
   const actions = $('#teamMessage').closest('.field').nextElementSibling;
   const imageButton = document.createElement('button');
   imageButton.className = 'button'; imageButton.textContent = 'Baixar card';

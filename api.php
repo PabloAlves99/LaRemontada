@@ -84,6 +84,7 @@ try {
             $label = $inv['label'];
         } else {
             $u = admin();
+            if (!master($u)) fail('Somente o administrador Master pode alterar avaliações.', 403);
             $evaluator = 'admin:' . $u['id'];
             $label = $u['name'];
         }
@@ -143,6 +144,7 @@ try {
         result(['ok' => true]);
     }
     if (in_array($action, ['reviewEdit', 'reviewStatus', 'reviewDelete'], true)) {
+        if (!master($u)) fail('Somente o administrador Master pode alterar avaliações.', 403);
         $id = filter_var($b['id'] ?? null, FILTER_VALIDATE_INT);
         if (!$id || !query('SELECT id FROM reviews WHERE id=?', [$id])->fetch()) fail('Avaliação não encontrada.', 404);
         if ($action === 'reviewEdit') query('UPDATE reviews SET scores=?,edited_by=?,edited_at=? WHERE id=?', [encode(scores($b['scores'] ?? null)), $u['name'], gmdate('c'), $id]);
@@ -164,7 +166,7 @@ try {
         result(['ok' => true]);
     }
     if ($action === 'adminEdit') {
-        if (!$u['owner']) fail('Somente o responsável pode gerenciar acessos.', 403);
+        if (!master($u)) fail('Somente o administrador Master pode gerenciar acessos.', 403);
         $id = textValue($b['id'] ?? '', 40);
         $target = query('SELECT * FROM admins WHERE id=?', [$id])->fetch();
         if (!$target) fail('Administrador não encontrado.', 404);
@@ -173,6 +175,7 @@ try {
         $active = !empty($b['active']) ? 1 : 0;
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) fail('E-mail inválido.');
         if ($target['owner'] && !$active) fail('O responsável deve manter o acesso ativo.');
+        if ($target['owner'] && $email !== OWNER_EMAIL) fail('O e-mail do administrador Master não pode ser alterado.');
         if (query('SELECT id FROM admins WHERE email=? AND id<>?', [$email, $id])->fetch()) fail('Este e-mail já está em uso.');
         $pass = $b['password'] ?? '';
         if ($pass !== '' && strlen(textValue($pass, 128)) < 10) fail('Use pelo menos 10 caracteres na senha.');
@@ -229,7 +232,6 @@ try {
         result(['ok' => true]);
     }
     if ($action === 'adminAdd') {
-        if (!$u['owner']) fail('Somente o responsável pode gerenciar administradores.', 403);
         $email = strtolower(textValue($b['email'] ?? '', 190));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) fail('E-mail inválido.');
         $name = textValue($b['name'] ?? '');
@@ -249,7 +251,7 @@ try {
         result(['ok' => true]);
     }
     if ($action === 'adminRemove') {
-        if (!$u['owner']) fail('Acesso restrito ao responsável.', 403);
+        if (!master($u)) fail('Acesso restrito ao administrador Master.', 403);
         query('DELETE FROM admins WHERE id=? AND owner=0', [$b['id'] ?? '']);
         result(['ok' => true]);
     }

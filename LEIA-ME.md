@@ -26,7 +26,11 @@ No primeiro acesso, crie a senha do administrador PabloHAlves99@gmail.com. Nenhu
 
 Na aba Rodada, use **Presenças** para marcar quem confirmou ou ainda está como talvez em cada data. O botão **Usar confirmados** leva a lista diretamente ao sorteio; a seleção manual continua disponível.
 
-A aba **Painel** reúne as confirmações registradas, o relatório de equilíbrio da rodada aberta e permite baixar as estatísticas em CSV. No compartilhamento dos times, **Baixar card** cria uma imagem PNG pronta para encaminhar no WhatsApp, sem notas ou avaliações.
+A aba **Painel** reúne as confirmações registradas, o relatório de equilíbrio da rodada aberta e permite baixar as estatísticas em CSV. Antes de publicar, a Rodada oferece dois textos: **Enviar times sem notas**, próprio para o grupo, e **Enviar nomes e notas**, para a diretoria votar na prévia. No compartilhamento dos times, **Baixar card** cria uma imagem PNG pronta para encaminhar no WhatsApp, sem notas ou avaliações.
+
+## Acessos administrativos
+
+`pablohalves99@gmail.com` é o administrador **Master**: somente ele pode criar, editar, desativar ou excluir avaliações. Os demais administradores podem consultar todas as notas e administrar o restante do aplicativo, inclusive cadastrar novos administradores, mas não podem alterar avaliações.
 
 Os links localhost só funcionam no computador que executa o app. Para outras pessoas acessarem, use a hospedagem ou um endereço de rede acessível a elas. Links criados localmente precisarão usar o novo domínio após a transferência; mantenha a mesma parte ?avaliar=... para preservar o convite.
 

@@ -144,6 +144,10 @@ function admin(): array
     if (!$user) fail('Entre como administrador para continuar.', 401);
     return $user;
 }
+function master(array $user): bool
+{
+    return !empty($user['owner']) && strtolower((string)$user['email']) === OWNER_EMAIL;
+}
 function invite(string $token): array
 {
     if (strlen($token) !== 64) fail('Link de avaliação inválido.', 404);
