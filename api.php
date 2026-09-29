@@ -22,10 +22,62 @@ try {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail('Método não permitido.', 405);
     }
     if ($action === 'public') result(['rounds' => allRounds(true)]);
+    if ($action === 'ranking') { database(); result(statistics(true, (string)($_GET['date'] ?? ''))); }
+    if ($action === 'publicMatches') { database(); result(['matches'=>matchList(textValue($_GET['date']??'',10),true)]); }
+    if (in_array($action,['matches','matchCreate','matchGoal','matchAssist','matchUndoGoal','matchFinish','matchCancel'],true)) {
+        $u = statisticsUser();
+        if ($action==='matches') {
+            $date = textValue($_GET['date']??'',10);
+            matchAccess($date,$u);
+            result(['matches'=>matchList($date,!empty($u['limited']),$u),'goalLimit'=>(int)setting('matchGoalLimit',2)]);
+        }
+        postOnly();
+        mutateMatch($action,$b,$u);
+    }
     if ($action === 'session') {
         $user = null;
         if (isset($_SESSION['admin'])) $user = query('SELECT id,email,name,owner,active FROM admins WHERE id=? AND active=1', [$_SESSION['admin']])->fetch() ?: null;
-        result(['user' => $user, 'csrf' => $_SESSION['csrf'], 'setup' => query('SELECT COUNT(*) FROM admins')->fetchColumn() == 0, 'local' => in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'])]);
+        result(['user' => $user, 'scorekeeper' => scorekeeper(), 'csrf' => $_SESSION['csrf'], 'setup' => query('SELECT COUNT(*) FROM admins')->fetchColumn() == 0, 'local' => in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'])]);
+    }
+    if ($action === 'scorekeeperLogin') {
+        postOnly();
+        $name = textValue($b['name'] ?? '', 100);
+        $password = textValue($b['password'] ?? '', 128);
+        $key = hash('sha256', 'scorekeeper:' . ($_SERVER['REMOTE_ADDR'] ?? 'local'));
+        database()->exec('BEGIN IMMEDIATE');
+        $attempt = query('SELECT * FROM login_attempts WHERE id=?', [$key])->fetch();
+        if ($attempt && time() - (int)$attempt['started'] < 900 && (int)$attempt['attempts'] >= 10) fail('Muitas tentativas. Aguarde 15 minutos.', 429);
+        if (!$attempt || time() - (int)$attempt['started'] >= 900) query('INSERT INTO login_attempts(id,attempts,started) VALUES (?,0,?) ON CONFLICT(id) DO UPDATE SET attempts=0,started=excluded.started', [$key,time()]);
+        $config = setting('scorekeeper', []);
+        if (empty($config['hash']) || !password_verify($password, $config['hash'])) {
+            query('UPDATE login_attempts SET attempts=attempts+1 WHERE id=?', [$key]);
+            database()->exec('COMMIT');
+            fail('Senha de lançamento inválida ou acesso desativado.', 401);
+        }
+        query('DELETE FROM login_attempts WHERE id=?', [$key]);
+        database()->exec('COMMIT');
+        session_regenerate_id(true);
+        $_SESSION['scorekeeper'] = ['id' => 'scorer:' . identifier(), 'name' => $name . ' (senha de lançamento)', 'version' => $config['version']];
+        result(['ok' => true]);
+    }
+    if (in_array($action, ['statistics','statAdd','statCancel','scoringRounds'], true)) {
+        $u = statisticsUser();
+        $limitedDate = !empty($u['limited']) ? scorekeeperRound() : null;
+        if ($action === 'scoringRounds') result(['rounds' => array_values(array_filter(allRounds(true), fn($r) => empty($u['limited']) || $r['date'] === $limitedDate))]);
+        if ($action === 'statistics') {
+            if (!empty($u['limited']) && !$limitedDate) result(['players' => [], 'teams' => [], 'events' => [], 'dates' => []]);
+            $stats = statistics(!empty($u['limited']), $limitedDate ?? '');
+            if (!empty($u['limited'])) {
+                $ownIds = array_column(rows('SELECT id FROM stat_events WHERE created_by=?', [$u['id']]), 'id');
+                foreach ($stats['events'] as &$event) $event['can_cancel'] = in_array($event['id'], $ownIds, true);
+                unset($event);
+            }
+            result($stats);
+        }
+        postOnly();
+        if (!empty($u['limited'])) fail('Use um confronto para registrar ou corrigir os lances.',403);
+        if ($action === 'statAdd') recordStatistic($b, $u);
+        cancelStatistic($b, $u);
     }
     if ($action === 'setup') {
         postOnly();
@@ -95,6 +147,18 @@ try {
         result(['ok' => true]);
     }
     $u = admin();
+    if ($action==='matchSettings') {
+        if ($method==='GET') result(['goalLimit'=>(int)setting('matchGoalLimit',2)]);
+        postOnly();
+        $limit = $b['goalLimit']??null;
+        if (!is_int($limit) || $limit<1 || $limit>99) fail('Informe um limite inteiro de 1 a 99 gols.');
+        putSetting('matchGoalLimit',$limit);
+        result(['ok'=>true]);
+    }
+    if ($action === 'scorekeeperSettings' && $method === 'GET') {
+        $config = setting('scorekeeper', []);
+        result(['enabled' => !empty($config['hash']), 'updated' => $config['updated'] ?? null, 'round' => scorekeeperRound()]);
+    }
     if ($action === 'admin') result(['players' => allPlayers(), 'reviews' => rows('SELECT * FROM reviews ORDER BY id DESC'), 'rounds' => allRounds(), 'invites' => rows('SELECT id,label,active,created FROM invites ORDER BY created DESC'), 'admins' => rows('SELECT id,email,name,owner,active FROM admins ORDER BY owner DESC,name'), 'keepers' => setting('keepers', ['', '', '']), 'rules' => setting('rules', ['weak' => 2, 'separatePivot' => true, 'history' => 6]), 'attendance' => rows('SELECT round_date,player_id,status FROM attendance ORDER BY round_date DESC'), 'attendanceStats' => attendanceStats()]);
     if ($action === 'backup') {
         $dir = configuration()['storage_path'];
@@ -107,6 +171,18 @@ try {
         exit;
     }
     postOnly();
+
+    if ($action === 'scorekeeperSettings') {
+        $enabled = ($b['enabled'] ?? true) !== false;
+        $hash = null;
+        if ($enabled) {
+            $password = textValue($b['password'] ?? '', 128);
+            if (strlen($password) < 10) fail('Use uma senha de pelo menos 10 caracteres.');
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+        }
+        putSetting('scorekeeper', ['hash' => $hash, 'version' => identifier(), 'updated' => gmdate('c')]);
+        result(['ok' => true]);
+    }
 
     if ($action === 'attendance') {
         $date = (string)($b['date'] ?? '');
@@ -191,6 +267,7 @@ try {
         if (!$old) fail('Rodada não encontrada.', 404);
         if (($b['version'] ?? null) !== $old['updated']) fail('A rodada mudou. Atualize a página antes de continuar.', 409);
         if ($action === 'roundDelete') {
+            if (query('SELECT id FROM stat_teams WHERE round_date=?', [$date])->fetch()) fail('Esta rodada possui histórico de estatísticas. Despublique para retirá-la da visão pública.', 409);
             automaticBackup();
             query('DELETE FROM rounds WHERE date=? AND updated=?', [$date, $old['updated']]);
         }
@@ -270,6 +347,7 @@ try {
         if (!$dt || $dt->format('Y-m-d') !== $date) fail('Data inválida.');
         $teams = $b['teams'] ?? [];
         if (count($teams) !== 3) fail('São necessários três times.');
+        database()->exec('BEGIN IMMEDIATE');
         $previous = query('SELECT data FROM rounds WHERE date=?', [$date])->fetchColumn();
         $knownHistorical = [];
         if ($previous) foreach (json_decode($previous, true)['teams'] as $team) foreach ($team as $member) $knownHistorical[$member['id']] = true;
@@ -297,10 +375,12 @@ try {
         if (!is_array($keepers) || count($keepers) !== 3) fail('Goleiros inválidos.');
         foreach ($keepers as $k) if (!is_string($k) || mb_strlen($k) > 100) fail('Goleiro inválido.');
         $old = query('SELECT updated,published FROM rounds WHERE date=?', [$date])->fetch();
+        guardStatisticFormation($date, $clean);
         if ($old && ($b['version'] ?? null) !== $old['updated']) fail('Esta rodada mudou em outra sessão. Reabra a rodada antes de salvar.', 409);
         $updated = gmdate('Y-m-d\TH:i:s') . '.' . bin2hex(random_bytes(4));
         $published = ($b['publish'] ?? false) ? 1 : 0;
         query('INSERT INTO rounds (date,data,published,updated) VALUES (?,?,?,?) ON CONFLICT(date) DO UPDATE SET data=excluded.data,published=excluded.published,updated=excluded.updated', [$date, encode(['teams' => $clean, 'keepers' => $keepers]), $published, $updated]);
+        database()->exec('COMMIT');
         result(['ok' => true, 'updated' => $updated, 'published' => (bool)$published]);
     }
     fail('Operação não encontrada.', 404);

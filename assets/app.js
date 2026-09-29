@@ -37,7 +37,7 @@ const params = new URLSearchParams(location.search),
   token = params.get("avaliar");
 let session = {},
   data = {},
-  tab = "rodada",
+  tab = params.get("tab") === "estatisticas" ? "estatisticas" : "rodada",
   selected = new Set(),
   round = null,
   date = nextTuesday(),
@@ -201,6 +201,10 @@ async function load() {
     await loadEvaluation();
     return;
   }
+  if (params.get('view') === 'lancamentos') {
+    await renderScoringAccess();
+    return;
+  }
   if (params.get("view") === "admin") {
     if (!session.user) {
       renderAuth();
@@ -219,6 +223,10 @@ async function load() {
     }
     renderAdmin();
   } else {
+    if (params.get("view") === "ranking") {
+      await renderRankingPage();
+      return;
+    }
     publicRounds = (await api("public")).rounds;
     renderPublic();
   }
@@ -257,6 +265,7 @@ function renderAuth() {
       ? "Abra esta página na máquina onde o app foi instalado para configurar o primeiro acesso."
       : "As avaliações ficam restritas à administração.") +
     "</p></div></main>";
+  if (!setup) $('.auth').insertAdjacentHTML('beforeend', '<p><a class="button" href="?view=lancamentos">Entrar com senha de lançamento</a></p>');
   $("#authForm").onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target,
@@ -292,6 +301,7 @@ function renderAdmin() {
   $("#modeLink").href = "./";
   $("#modeLink").textContent = "Visão do grupo ↗";
   const titles = {
+    estatisticas: ["Cada lance conta.", "Gols, assistências e resultados por rodada."],
     rodada: ["A próxima terça.", "A turma de sempre. Novas combinações."],
     jogadores: [
       "Quem veste a camisa.",
@@ -325,6 +335,7 @@ function renderAdmin() {
     '<nav class="tabs" aria-label="Administração">' +
     Object.entries({
       rodada: "Rodada",
+      estatisticas: "Gols e resultados",
       jogadores: "Jogadores",
       avaliacoes: "Avaliações",
       historico: "Histórico",
@@ -366,6 +377,7 @@ function renderAdmin() {
     copyLink(new URL("./", location.href).href);
   ({
     rodada: renderRound,
+    estatisticas: renderStatistics,
     jogadores: renderPlayers,
     avaliacoes: renderReviews,
     historico: renderHistory,
@@ -1211,10 +1223,10 @@ async function copyLink(url) {
 }
 function renderPublic() {
   const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
-  $("#modeLink").textContent = "Administração ↗";
+  $("#modeLink").textContent = session.user ? "Área administrativa" : "Login";
   $("#modeLink").href = "?view=admin";
   app.innerHTML =
-    '<main><div class="public-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>O jogo começa aqui.</h1></div><span class="pill">3 times · 6 na linha · Goleiros fixos</span></div>' +
+    '<main><div class="public-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>O jogo começa aqui.</h1></div><a class="button primary" href="?view=ranking">Ranking de gols e assistências</a></div>' +
     (r
       ? '<div class="page-heading"><div><p class="eyebrow">TIMES CONFIRMADOS</p><h2>' +
         day(r.date) +
@@ -1784,7 +1796,60 @@ renderSettings = function () {
       }
     });
   renderDrawPreferences();
+  renderScorerSettings();
+  renderMatchSettings();
 };
+async function renderMatchSettings() {
+  const panel=document.createElement('section'); panel.className='panel'; $('#content').append(panel);
+  try {
+    const config=await api('matchSettings'); if(!panel.isConnected)return;
+    panel.innerHTML=`<h2>Regras dos confrontos</h2><form id="matchSettingsForm"><label class="field">Gols para vencer<input name="goalLimit" type="number" min="1" max="99" step="1" value="${config.goalLimit}" required></label><p class="muted">O jogo termina quando um time atinge esse limite, ou pode ser encerrado em empate antes disso. Alterações valem apenas para novos confrontos.</p><button class="button dark">Salvar limite de gols</button></form>`;
+    $('#matchSettingsForm').onsubmit=async e=>{e.preventDefault();const form=e.target;$('button',form).disabled=true;try{await api('matchSettings',{goalLimit:Number(new FormData(form).get('goalLimit'))});toast('Limite salvo para os próximos jogos.');}catch(err){error(err.message,form);}finally{$('button',form).disabled=false;}};
+  } catch(err){panel.innerHTML=`<p role="alert">${esc(err.message)}</p>`;}
+}
+async function renderScorerSettings() {
+  const panel = document.createElement('section');
+  panel.className = 'panel';
+  $('#content').append(panel);
+  try {
+    const config = await api('scorekeeperSettings');
+    if (!panel.isConnected) return;
+    panel.innerHTML = `<h2>Senha de lançamento</h2><p>Compartilhe esta senha com quem vai marcar os gols e resultados. Ela permite cadastrar confrontos e lançar gols somente na próxima rodada publicada (incluindo a de hoje). A pessoa pode corrigir os próprios lances enquanto o jogo estiver aberto. Rodadas passadas ficam bloqueadas.</p><p class="muted">${config.enabled ? 'Acesso por senha ativado.' : 'Acesso por senha desativado.'} A senha vale até você trocá-la ou desativá-la. Cada troca encerra os acessos anteriores.</p><p>${config.round ? `Rodada liberada: ${day(config.round)} de ${config.round.slice(0,4)}.` : "Publique a próxima rodada para liberar os confrontos."}</p><form id="scorerSettingsForm"><label class="field">Nova senha<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required><small>Pelo menos 10 caracteres. A senha salva não é exibida.</small></label><button class="button dark">${config.enabled ? 'Trocar senha' : 'Ativar senha'}</button></form><div class="actions public-share-actions"><button class="button" id="copyScoringLink">Copiar link de lançamento</button>${config.enabled ? '<button class="button danger" id="disableScoring">Desativar acesso por senha</button>' : ''}</div>`;
+    $('#copyScoringLink').onclick = () => copyLink(new URL('?view=lancamentos', location.href).href);
+    $('#scorerSettingsForm').onsubmit = async e => {
+      e.preventDefault(); const form = e.target; $('button', form).disabled = true;
+      try {
+        await api('scorekeeperSettings', {password:new FormData(form).get('password'), enabled:true});
+        toast('Senha atualizada. Os acessos com a senha anterior foram encerrados.');
+        renderSettings();
+      } catch(err) { error(err.message, form); } finally { $('button', form).disabled = false; }
+    };
+    if ($('#disableScoring')) $('#disableScoring').onclick = async e => {
+      e.target.disabled = true;
+      try { await api('scorekeeperSettings', {enabled:false}); toast('Acesso por senha desativado.'); renderSettings(); }
+      catch(err) { toast(err.message); e.target.disabled = false; }
+    };
+  } catch(err) { panel.innerHTML = `<p role="alert">${esc(err.message)}</p>`; }
+}
+
+async function renderScoringAccess() {
+  $('#modeLink').href = '?view=admin';
+  $('#modeLink').textContent = session.user ? 'Área administrativa' : 'Login';
+  if (!session.user && !session.scorekeeper) {
+    app.innerHTML = '<main><div class="auth"><p class="eyebrow">GOLS E RESULTADOS</p><h1>Marcar os lances.</h1><p>Use a senha de lançamento fornecida pela organização.</p><div class="panel"><form id="scoringLogin"><label class="field">Seu nome<input name="name" autocomplete="name" required maxlength="100"></label><label class="field">Senha de lançamento<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label><button class="button primary">Entrar para lançar</button></form></div><a class="button" href="?view=admin">Entrar com login administrativo</a></div></main>';
+    $('#scoringLogin').onsubmit = async e => {
+      e.preventDefault(); const form = e.target; $('button', form).disabled = true;
+      try { await api('scorekeeperLogin', Object.fromEntries(new FormData(form))); await load(); }
+      catch(err) { error(err.message, form); } finally { $('button', form).disabled = false; }
+    };
+    return;
+  }
+  data = await api('scoringRounds');
+  tab = 'estatisticas';
+  app.innerHTML = '<main>' + header('Gols e resultados.', 'Selecione a rodada e registre os lances.', '<a class="button" href="./">Ver os times</a><button class="button" id="scoringLogout">Sair</button>') + '<section id="content"></section></main>';
+  $('#scoringLogout').onclick = async () => { await api('logout', {}); await load(); };
+  await renderStatistics();
+}
 function renderDrawPreferences() {
   const f = $("#settingsForm"),
     rules = normalizeRules(data.rules);
@@ -1881,14 +1946,43 @@ const originalPublic = renderPublic;
 renderPublic = function () {
   originalPublic();
   const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
-  if (r) {
+  if (r && session.user) {
+    const actions = document.createElement("div");
+    actions.className = "public-share-actions";
     const b = document.createElement("button");
     b.className = "button dark";
-    b.textContent = "Enviar times sem notas";
+    b.textContent = "Copiar times";
     b.onclick = () => shareTeams(r);
-    $("#app main").append(b);
+    actions.append(b);
+    $("#app main").append(actions);
+  }
+  if (r) {
+    const summary = document.createElement("section");
+    summary.className = "public-round-summary";
+    summary.setAttribute("aria-label", "Resultados e histórico da rodada");
+    $("#app main").append(summary);
+    renderPublicRoundSummary(r, summary);
   }
 };
+
+async function renderPublicRoundSummary(round, target) {
+  target.innerHTML = '<p class="muted" role="status">Carregando os resultados desta rodada…</p>';
+  try {
+    const [stats, games] = await Promise.all([api('ranking', null, '&date=' + encodeURIComponent(round.date)), api('publicMatches',null,'&date='+encodeURIComponent(round.date))]);
+    if (!target.isConnected) return;
+    const dateLabel = `${day(round.date)} de ${round.date.slice(0,4)}`;
+    target.innerHTML = `<details class="panel"><summary>Confrontos do dia · ${dateLabel}</summary>${publicMatchCards(games.matches)}</details><details class="panel"><summary>Resultados por formação · ${dateLabel}</summary>
+      <div class="table-wrap"><table><thead><tr><th>Time</th><th>Vitórias</th><th>Empates</th><th>Derrotas</th></tr></thead><tbody>${round.teams.map((members, index) => {
+        const team = stats.teams.find(t => Number(t.team_index) === index);
+        return `<tr><td><b>Time ${index+1}</b><details><summary>Jogadores</summary>${members.map(p => esc(p.name)).join(', ')}</details></td><td>${team?.win || 0}</td><td>${team?.draw || 0}</td><td>${team?.loss || 0}</td></tr>`;
+      }).join('')}</tbody></table></div></details>
+      <details class="panel"><summary>Histórico de lançamentos · ${dateLabel}</summary>${statHistory(stats.events)}</details>`;
+  } catch (err) {
+    if (!target.isConnected) return;
+    target.innerHTML = `<p role="alert">${esc(err.message)}</p><button class="button">Tentar novamente</button>`;
+    $('button', target).onclick = () => renderPublicRoundSummary(round, target);
+  }
+}
 
 const originalMember = editMember;
 editMember = function (t, i) {
@@ -2086,6 +2180,163 @@ function downloadTeamCard(r) {
   const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'la-remontada-' + r.date + '.png'; a.click();
 }
 
+let statsDate = "", statsBusy = false;
+const statLabels = { goal: "Gols", assist: "Assistências", win: "Vitórias", draw: "Empates", loss: "Derrotas" };
+
+let selectedMatchId = '';
+const matchRequestIds = new Map();
+const newRequestId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function matchTitle(m) {
+  return `Time ${Number(m.teams[0].team_index)+1} ${m.score[m.team_a]} × ${m.score[m.team_b]} Time ${Number(m.teams[1].team_index)+1}`;
+}
+function matchStatus(m) {
+  if (m.status === 'cancelled') return 'Cancelado';
+  if (m.status === 'open') return 'Em andamento';
+  if (m.score[m.team_a] === m.score[m.team_b]) return 'Empate';
+  return `Vitória do time ${Number(m.teams.find(t => t.id === (m.score[m.team_a] > m.score[m.team_b] ? m.team_a : m.team_b)).team_index)+1}`;
+}
+function publicMatchCards(matches) {
+  return matches.length ? `<div class="match-list">${matches.map((m,i) => `<article class="match-list-item"><div><small>Jogo ${i+1} · ${matchStatus(m)}</small><h3>${matchTitle(m)}</h3><details><summary>Lances</summary>${m.goals.filter(g=>!g.cancelled_at).map(g => `<p>${esc(g.player_name)}${g.own_goal ? ' · gol contra' : ' · gol'}${g.assistant_name ? ` · assistência de ${esc(g.assistant_name)}` : ''}</p>`).join('') || '<p>Sem gols.</p>'}</details></div></article>`).join('')}</div>` : '<p class="muted">Nenhum confronto cadastrado nesta data.</p>';
+}
+async function renderStatistics() {
+  const content = $('#content');
+  content.innerHTML = '<p role="status">Carregando os confrontos…</p>';
+  try {
+    if (!data.rounds.length) {
+      content.innerHTML = empty('Nenhuma rodada disponível.', session.user ? 'Salve os times de uma rodada para cadastrar os jogos.' : 'Aguarde a publicação da próxima rodada. Rodadas passadas ficam bloqueadas.');
+      return;
+    }
+    const round = data.rounds.find(r=>r.date===statsDate) || data.rounds[0];
+    statsDate = round.date;
+    const payload = await api('matches', null, '&date='+encodeURIComponent(round.date));
+    if (tab !== 'estatisticas' || !content.isConnected) return;
+    const openMatch = payload.matches.find(m=>m.status==='open');
+    const current = payload.matches.find(m=>m.id===selectedMatchId) || openMatch || payload.matches.at(-1);
+    selectedMatchId = current?.id || '';
+    content.innerHTML = `<div class="stats-toolbar"><label class="field">Data do jogo<select id="matchRound">${data.rounds.map(r=>`<option value="${r.date}" ${r.date===round.date?'selected':''}>${day(r.date)} de ${r.date.slice(0,4)}${r.published?'':' · Rascunho'}</option>`).join('')}</select></label><div class="actions"><a class="button" href="?view=ranking">Ver ranking</a><button class="button primary" id="newMatch" ${openMatch?'disabled':''}>Cadastrar novo jogo</button><button class="button" id="refreshMatches">Atualizar</button></div></div>
+      ${round.published ? '' : '<p class="notice">Os jogos desta rodada só aparecerão publicamente quando os times forem publicados.</p>'}
+      <p class="muted">Novos jogos: vence quem fizer ${payload.goalLimit} ${payload.goalLimit===1?'gol':'gols'} primeiro. Empates podem ser encerrados antes desse limite.</p>
+      ${payload.matches.length ? `<label class="field">Confrontos desta data<select id="selectMatch">${payload.matches.map((m,i)=>`<option value="${m.id}" ${m.id===selectedMatchId?'selected':''}>Jogo ${i+1} · ${matchTitle(m)} · ${matchStatus(m)}</option>`).join('')}</select></label>` : empty('Vamos começar um jogo?', 'Escolha os dois times em Cadastrar novo jogo. Você poderá criar outros confrontos quando a partida terminar.')}
+      <div id="matchFeedback" role="alert"></div><div id="matchEditor"></div>`;
+    $('#matchRound').onchange = e => { statsDate=e.target.value; selectedMatchId=''; renderStatistics(); };
+    $('#refreshMatches').onclick = renderStatistics;
+    if ($('#selectMatch')) $('#selectMatch').onchange=e=>{selectedMatchId=e.target.value;renderStatistics();};
+    const mutate = async (action, body) => {
+      if (statsBusy) return;
+      statsBusy = true;
+      const key = action+JSON.stringify(body);
+      if (['matchCreate','matchGoal'].includes(action)) {
+        if (!matchRequestIds.has(key)) matchRequestIds.set(key,newRequestId());
+        body = {...body,requestId:matchRequestIds.get(key)};
+      }
+      const controls=$$('button,select,input',content).map(el=>({el,disabled:el.disabled}));
+      controls.forEach(({el})=>el.disabled=true);
+      try {
+        const result = await api(action,body);
+        matchRequestIds.delete(key);
+        if (action==='matchCreate') selectedMatchId=result.id;
+        if (modal.open) modal.close();
+        toast(action==='matchFinish'?'Jogo encerrado. Ranking atualizado.':'Confronto atualizado.');
+        await renderStatistics();
+      } catch(err) {
+        toast(err.message);
+        if (modal.open) error(err.message,$('#modalBody'));
+        else if ($('#matchFeedback')) $('#matchFeedback').textContent=err.message+' Use Atualizar para conferir o estado do jogo.';
+      } finally {
+        statsBusy=false;
+        controls.forEach(({el,disabled})=>{if(el.isConnected)el.disabled=disabled;});
+      }
+    };
+    $('#newMatch').onclick = () => {
+      openModal(`<h2>Cadastrar novo jogo</h2><p>${day(round.date)} · limite de ${payload.goalLimit} gols</p><form id="newMatchForm"><label class="field">Primeiro time<select name="teamA">${round.teams.map((_,i)=>`<option value="${i}">Time ${i+1}</option>`).join('')}</select></label><label class="field">Segundo time<select name="teamB">${round.teams.map((_,i)=>`<option value="${i}" ${i===1?'selected':''}>Time ${i+1}</option>`).join('')}</select></label><button class="button primary">Criar confronto</button></form>`);
+      $('#newMatchForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);if(f.get('teamA')===f.get('teamB')){error('Escolha dois times diferentes.',e.target);return;}await mutate('matchCreate',{date:round.date,teamA:Number(f.get('teamA')),teamB:Number(f.get('teamB'))});};
+    };
+    if (!current) return;
+    const active = current.status==='open';
+    const reached = Math.max(...Object.values(current.score))>=current.goal_limit;
+    const finishable = reached || current.score[current.team_a]===current.score[current.team_b];
+    const activeGoals = current.goals.filter(g=>!g.cancelled_at);
+    const matchNumber = payload.matches.findIndex(m=>m.id===current.id)+1;
+    $('#matchEditor').innerHTML = `<section class="match-scoreboard"><p class="eyebrow">JOGO ${matchNumber} · ${matchStatus(current).toUpperCase()}</p><div class="match-score"><span>Time ${Number(current.teams[0].team_index)+1}</span><strong>${current.score[current.team_a]} <small>×</small> ${current.score[current.team_b]}</strong><span>Time ${Number(current.teams[1].team_index)+1}</span></div><p>Limite deste jogo: ${current.goal_limit} gols${active ? ' · Confira as assistências antes de encerrar.' : ''}</p></section>
+      ${active && reached ? '<p class="notice">Limite atingido. Confira os lances e encerre o jogo para registrar o resultado.</p>' : ''}
+      <div class="match-team-grid">${current.teams.map(t=>`<section class="panel"><h2>Time ${Number(t.team_index)+1}</h2>${t.members.map(p=>`<div class="stats-player"><div><b>${esc(p.name)}</b><small>${activeGoals.filter(g=>!g.own_goal&&g.player_id===p.id&&g.team_id===t.id).length} gols · ${activeGoals.filter(g=>g.assistant_id===p.id&&g.team_id===t.id).length} assistências${Number(p.guest)?' · Convidado, sem ranking individual':''}</small></div>${active?`<div class="stats-buttons"><button class="button" data-match-goal="${esc(p.id)}" data-team="${t.id}" ${reached?'disabled':''}>+1 gol</button><button class="button" data-own-goal="${esc(p.id)}" data-team="${t.id}" ${reached?'disabled':''}>Gol contra</button></div>`:''}</div>`).join('')}</section>`).join('')}</div>
+      <section class="panel"><h2>Lances deste confronto</h2><p class="muted">A assistência pertence a um gol e a outro jogador do mesmo time. Gol contra soma para o adversário e não recebe assistência.</p>${current.goals.length?current.goals.map(g=>{const t=current.teams.find(t=>t.id===g.team_id);return `<article class="match-goal-row ${g.cancelled_at?'stat-cancelled':''}"><div><b>${esc(g.player_name)} · ${g.own_goal?'gol contra':'gol'}</b><small>Time ${Number(t.team_index)+1}${g.cancelled_at?' · Cancelado':''}</small>${!g.cancelled_at&&g.can_edit&&!g.own_goal?`<label class="field">Assistência<select data-goal-assist="${g.id}"><option value="">Sem assistência</option>${t.members.filter(p=>p.id!==g.player_id).map(p=>`<option value="${esc(p.id)}" ${p.id===g.assistant_id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:g.assistant_name?`<small>Assistência: ${esc(g.assistant_name)}</small>`:''}</div>${g.can_edit?`<button class="button small" data-undo-goal="${g.id}">Desfazer gol</button>`:''}</article>`}).join(''):'<p>Nenhum gol registrado.</p>'}</section>
+      <div class="actions">${active?`<button class="button primary" id="finishMatch" ${finishable?'':'disabled'}>Encerrar jogo</button>`:''}${current.can_cancel?'<button class="button danger" id="cancelMatch">Cancelar confronto</button>':''}</div>${current.cancelled_reason?`<p class="notice">Cancelado: ${esc(current.cancelled_reason)}</p>`:''}${active&&!finishable?'<p class="muted">O jogo pode terminar quando um time atingir o limite de gols ou em empate.</p>':''}`;
+    const base = {matchId:current.id,version:current.version};
+    const confirmAction = (title, message, action, body) => {
+      openModal(`<h2>${esc(title)}</h2><p>${esc(message)}</p><form id="confirmMatchAction"><button class="button primary">Confirmar</button></form>`);
+      $('#confirmMatchAction').onsubmit=e=>{e.preventDefault();mutate(action,body);};
+    };
+    $$('[data-match-goal]').forEach(b=>b.onclick=()=>mutate('matchGoal',{...base,teamId:b.dataset.team,playerId:b.dataset.matchGoal,ownGoal:false}));
+    $$('[data-own-goal]').forEach(b=>b.onclick=()=>confirmAction('Registrar gol contra','O ponto será do adversário.', 'matchGoal',{...base,teamId:b.dataset.team,playerId:b.dataset.ownGoal,ownGoal:true}));
+    $$('[data-goal-assist]').forEach(s=>s.onchange=()=>mutate('matchAssist',{...base,goalId:s.dataset.goalAssist,playerId:s.value||null}));
+    $$('[data-undo-goal]').forEach(b=>b.onclick=()=>confirmAction('Desfazer gol','O gol e sua assistência serão retirados do placar.', 'matchUndoGoal',{...base,goalId:b.dataset.undoGoal}));
+    if ($('#finishMatch')) $('#finishMatch').onclick=()=>confirmAction('Encerrar jogo',`${matchTitle(current)}. O resultado será registrado no ranking.`, 'matchFinish',base);
+    if ($('#cancelMatch')) $('#cancelMatch').onclick=()=>{
+      openModal('<h2>Cancelar confronto</h2><p>Os gols, assistências e resultados deste jogo deixarão de contar no ranking. O histórico será preservado.</p><form id="cancelMatchForm"><label class="field">Motivo<input name="reason" required maxlength="250"></label><button class="button danger">Confirmar cancelamento</button></form>');
+      $('#cancelMatchForm').onsubmit=e=>{e.preventDefault();mutate('matchCancel',{...base,reason:new FormData(e.target).get('reason')});};
+    };
+  } catch(err) {
+    if (!content.isConnected) return;
+    content.innerHTML=`<p role="alert">${esc(err.message)}</p><button class="button" id="retryMatches">Atualizar acesso</button>`;
+    $('#retryMatches').onclick=load;
+  }
+}
+
+function statHistory(events, administrative = false) {
+  if (!events.length) return '<p class="muted">Nenhum lançamento por aqui ainda.</p>';
+  return `<div class="stats-history">${events.map(e => `<article class="stats-history-row ${e.cancelled_at ? 'stat-cancelled' : ''}"><div><b>${e.quantity} ${e.quantity === 1 ? ({goal:"gol",assist:"assistência",win:"vitória",draw:"empate",loss:"derrota"})[e.kind] : statLabels[e.kind].toLowerCase()}${e.player_name ? ` · ${esc(e.player_name)}` : ''}</b><small>${day(e.round_date)} de ${e.round_date.slice(0,4)} · Time ${Number(e.team_index)+1} · ${new Date(e.created).toLocaleString('pt-BR')}${administrative ? ` · ${esc(e.author)}` : ''}</small>${e.cancelled_at ? `<small>Cancelado${administrative ? `: ${esc(e.cancel_reason)}` : ''}</small>` : ''}</div>${administrative && !e.cancelled_at && e.can_cancel !== false ? `<button class="button small" data-stat-cancel="${e.id}">Cancelar</button>` : ''}</article>`).join('')}</div>`;
+}
+
+async function renderRankingPage() {
+  $("#modeLink").href = '?view=admin';
+  $("#modeLink").textContent = session.user ? 'Área administrativa' : 'Login';
+  let stats = await api('ranking');
+  let period = '', sortKey = 'win', ascending = false;
+  const columns = [
+    ['name', 'Jogador'], ['goal', 'Gols'], ['assist', 'Assistências'],
+    ['win', 'Vitórias'], ['draw', 'Empates'], ['loss', 'Derrotas'],
+    ['confirmed', 'Dias confirmados'],
+  ];
+  const render = () => {
+    const ranked = [...stats.players].sort((a, b) => {
+      const comparison = sortKey === 'name'
+        ? a.name.localeCompare(b.name, 'pt-BR')
+        : Number(a[sortKey]) - Number(b[sortKey]);
+      return (ascending ? comparison : -comparison) || a.name.localeCompare(b.name, 'pt-BR');
+    });
+    app.innerHTML = `<main>
+      <div class="page-heading"><div><p class="eyebrow">LA REMONTADA / RANKING</p><h1>Ranking dos jogadores.</h1><p class="muted">Toda a turma, todos os números.</p></div><a class="button" href="./">Ver os times</a></div>
+      <div class="stats-toolbar"><p class="muted">Clique em uma coluna para ordenar. Clique novamente para inverter.</p><label class="field">Período<select id="rankPeriod"><option value="">Todas as datas</option>${stats.dates.map(d => `<option value="${esc(d)}" ${period === d ? 'selected' : ''}>${day(d)} de ${d.slice(0,4)}</option>`).join('')}</select></label></div>
+      <section class="panel"><div class="panel-head"><h2>Classificação geral</h2><span class="pill">${ranked.length} jogadores</span></div>
+      <p class="muted" id="rankExplanation">Gols e resultados das rodadas publicadas. Cada jogador recebe as vitórias, os empates e as derrotas dos times que integrou. Dias confirmados conta as datas com presença marcada como confirmada, mesmo sem rodada publicada.</p>
+      ${ranked.length ? `<div class="table-wrap ranking-table-wrap" tabindex="0" role="region" aria-label="Ranking dos jogadores, role para ver todas as colunas"><table class="ranking-table" aria-describedby="rankExplanation"><thead><tr>${columns.map(([key,label]) => `<th scope="col" aria-sort="${sortKey === key ? (ascending ? 'ascending' : 'descending') : 'none'}"><button class="rank-sort" data-sort="${key}">${label}<span aria-hidden="true">${sortKey === key ? (ascending ? '↑' : '↓') : '↕'}</span></button></th>`).join('')}</tr></thead><tbody>${ranked.map(p => `<tr>${columns.map(([key]) => key === 'name' ? `<th scope="row">${esc(p.name)}</th>` : `<td${sortKey === key ? ' class="rank-selected"' : ''}>${Number(p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nenhum jogador cadastrado ainda.</p>'}
+      </section>
+      </main>`;
+    $$("[data-sort]").forEach(button => button.onclick = () => {
+      const key = button.dataset.sort;
+      ascending = sortKey === key ? !ascending : key === 'name';
+      sortKey = key;
+      const scroll = $(".ranking-table-wrap").scrollLeft;
+      render();
+      $(".ranking-table-wrap").scrollLeft = scroll;
+      $(`[data-sort="${key}"]`).focus({ preventScroll: true });
+    });
+    $("#rankPeriod").onchange = async e => {
+      const select = e.target, nextPeriod = select.value;
+      select.disabled = true;
+      try {
+        stats = await api('ranking', null, '&date=' + encodeURIComponent(nextPeriod));
+        period = nextPeriod;
+        render();
+      } catch (err) {
+        select.value = period;
+        toast(err.message);
+      } finally { select.disabled = false; }
+    };
+  };
+  render();
+}
 load().catch((err) => {
   app.innerHTML =
     "<main>" +

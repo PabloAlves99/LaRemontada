@@ -38,6 +38,10 @@ function initialize(PDO $db): void
         ] as $sql
     ) $db->exec($sql);
     migrateManagement($db);
+    require_once __DIR__ . '/statistics.php';
+    initializeStatistics($db);
+    require_once __DIR__ . '/matches.php';
+    initializeMatches($db);
 }
 function query(string $sql, array $params = []): PDOStatement
 {
@@ -143,6 +147,26 @@ function admin(): array
     $user = $id ? query('SELECT id,email,name,owner,active FROM admins WHERE id=? AND active=1', [$id])->fetch() : false;
     if (!$user) fail('Entre como administrador para continuar.', 401);
     return $user;
+}
+function scorekeeper(): ?array
+{
+    $access = $_SESSION['scorekeeper'] ?? null;
+    $config = setting('scorekeeper', []);
+    if (!$access || empty($config['hash']) || !hash_equals($config['version'] ?? '', $access['version'] ?? '')) return null;
+    return ['id' => $access['id'], 'name' => $access['name'], 'limited' => true];
+}
+function statisticsUser(): array
+{
+    if (isset($_SESSION['admin'])) {
+        $user = query('SELECT id,name FROM admins WHERE id=? AND active=1', [$_SESSION['admin']])->fetch();
+        if ($user) return $user;
+    }
+    return scorekeeper() ?? fail('Entre com seu login ou com a senha de lançamento.', 401);
+}
+function scorekeeperRound(): ?string
+{
+    $today = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+    return query('SELECT date FROM rounds WHERE published=1 AND date>=? ORDER BY date LIMIT 1', [$today])->fetchColumn() ?: null;
 }
 function master(array $user): bool
 {
