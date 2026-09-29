@@ -13,13 +13,15 @@ header('X-Content-Type-Options: nosniff');
     <title>La Remontada • Futebol de terça</title>
     <meta name="description" content="Os times, a turma e a história do nosso futebol de terça.">
     <link rel="icon" href="assets/favicon.svg">
-    <link rel="stylesheet" href="assets/style.css?v=9">
-    <script type="module" src="assets/app.js?v=14"></script>
+    <link rel="stylesheet" href="assets/style.css?v=10">
+    <script type="module" src="assets/app.js?v=15"></script>
 </head>
 
 <body>
-    <header class="topbar"><a class="brand" href="./"><span class="crest">LR<span>✦</span></span><span>LA REMONTADA<small>FUTEBOL DE TERÇA</small></span></a>
-        <div class="top-actions"><span class="season">SOCIETY · 6 NA LINHA</span><a id="modeLink" href="?view=admin">Login</a></div>
+    <header class="topbar"><a class="brand" href="./"><span class="crest">LR<span>✦</span></span><span>LA
+                REMONTADA<small>FUTEBOL DE TERÇA</small></span></a>
+        <div class="top-actions"><span class="season">SOCIETY · 6 NA LINHA</span><a id="modeLink"
+                href="?view=admin">Login</a></div>
     </header>
     <div id="app" aria-live="polite">
         <div class="loading">Preparando o campo…</div>

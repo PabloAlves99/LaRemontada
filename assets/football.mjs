@@ -1,3 +1,5 @@
+export const teamNames = ["Azul", "Vermelho", "Preto"];
+export const teamName = (i) => "Time " + (teamNames[i] ?? i + 1);
 export const criteria = ["Físico", "Ataque", "Defesa", "Habilidade", "Toque"];
 export const descriptions = [
   "Fôlego e intensidade durante o jogo.",
@@ -60,7 +62,7 @@ export function warnings(teams, settings) {
       rated.filter((p) => mean(p.scores) <= r.weak).length > 1
     )
       out.push(
-        "Time " + (i + 1) + ": mais de um jogador na faixa até " + r.weak + ".",
+        teamName(i) + ": mais de um jogador na faixa até " + r.weak + ".",
       );
   });
   if (r.usePosition)
@@ -187,7 +189,7 @@ export function teamsText(round) {
     date,
     ...round.teams.map((team, i) =>
       [
-        "TIME " + (i + 1),
+        teamName(i).toUpperCase(),
         ...(clean(round.keepers?.[i])
           ? ["Goleiro: " + clean(round.keepers[i])]
           : []),

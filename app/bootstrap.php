@@ -179,16 +179,35 @@ function invite(string $token): array
     if (!$r) fail('Este link foi desativado ou não existe.', 404);
     return $r;
 }
+const SESSION_LIFETIME = 60 * 60 * 24 * 7; // 30 dias
+
 function startSession(): void
 {
     $sessionPath = configuration()['storage_path'] . '/sessions';
     if (!is_dir($sessionPath)) mkdir($sessionPath, 0700, true);
     session_save_path($sessionPath);
     ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.gc_maxlifetime', (string)SESSION_LIFETIME);
+    ini_set('session.gc_probability', '1');
+    ini_set('session.gc_divisor', '100');
     session_name('remontada');
-    session_set_cookie_params(['httponly' => true, 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'samesite' => 'Lax', 'path' => rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/') . '/']);
+
+    $cookie = [
+        'lifetime' => SESSION_LIFETIME,
+        'path' => rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/') . '/',
+        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+    session_set_cookie_params($cookie);
     session_start();
     if (!isset($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
+
+    // Renovação deslizante: cada acesso reinicia os 30 dias no navegador.
+    // (No servidor, o lazy_write já atualiza a data do arquivo.)
+    unset($cookie['lifetime']);
+    setcookie(session_name(), session_id(), ['expires' => time() + SESSION_LIFETIME] + $cookie);
 }
 
 function migrateManagement(PDO $db): void
