@@ -10,6 +10,9 @@ function initializeMatches(PDO $db): void
     $db->exec('CREATE INDEX IF NOT EXISTS idx_match_goals_match ON match_goals(match_id,created)');
     $db->exec('CREATE TABLE IF NOT EXISTS match_stat_links (event_id INTEGER PRIMARY KEY, match_id TEXT NOT NULL, FOREIGN KEY(event_id) REFERENCES stat_events(id), FOREIGN KEY(match_id) REFERENCES matches(id))');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_match_stat_links_match ON match_stat_links(match_id)');
+    // O regulamento atual usa dois gols como teto. Confrontos já encerrados
+    // preservam o limite histórico; jogos ainda abertos passam a seguir a regra.
+    $db->exec("UPDATE matches SET goal_limit=2 WHERE status='open' AND goal_limit<>2");
 }
 
 function matchAccess(string $date, array $user): void
@@ -65,7 +68,7 @@ function matchList(string $date, bool $public = false, ?array $user = null): arr
             $m['teams'][] = $t;
         }
         $m['goals'] = rows(
-            'SELECT g.*,p.name AS player_name,a.name AS assistant_name FROM match_goals g JOIN stat_members p ON p.team_id=g.team_id AND p.player_id=g.player_id LEFT JOIN stat_members a ON a.team_id=g.team_id AND a.player_id=g.assistant_id WHERE g.match_id=?'
+            'SELECT g.id,g.match_id,g.team_id,g.player_id,g.own_goal,g.created,g.created_by,g.author,g.cancelled_at,g.cancelled_by,p.name AS player_name FROM match_goals g JOIN stat_members p ON p.team_id=g.team_id AND p.player_id=g.player_id WHERE g.match_id=?'
             . ($hide ? ' AND g.cancelled_at IS NULL' : '')
             . ' ORDER BY g.created,g.rowid',
             [$m['id']]
@@ -78,8 +81,9 @@ function matchList(string $date, bool $public = false, ?array $user = null): arr
         }
         unset($g);
         $m['can_cancel'] = $user && $m['status'] !== 'cancelled' && (empty($user['limited']) || ($m['status'] === 'open' && $m['created_by'] === $user['id']));
+        $m['can_delete'] = $user && empty($user['limited']) && $m['status'] === 'cancelled';
         if ($public || !empty($user['limited']))
-            unset($m['request_id'], $m['created_by'], $m['author']);
+            unset($m['request_id'], $m['created_by'], $m['author'], $m['can_delete']);
     }
     unset($m);
     return $matches;
@@ -87,6 +91,8 @@ function matchList(string $date, bool $public = false, ?array $user = null): arr
 
 function mutateMatch(string $action, array $b, array $user): never
 {
+    if ($action === 'matchDelete')
+        deleteMatch($b, $user);
     database()->exec('BEGIN IMMEDIATE');
     if ($action === 'matchCreate') {
         $date = textValue($b['date'] ?? '', 10);
@@ -110,7 +116,7 @@ function mutateMatch(string $action, array $b, array $user): never
             fail('Encerre ou cancele o jogo em andamento antes de cadastrar outro.', 409);
         $teams = json_decode($round, true)['teams'];
         $id = identifier();
-        query('INSERT INTO matches(id,request_id,round_date,team_a,team_b,goal_limit,created,created_by,author) VALUES (?,?,?,?,?,?,?,?,?)', [$id, $request, $date, matchTeam($date, $a, $teams[$a]), matchTeam($date, $c, $teams[$c]), (int) setting('matchGoalLimit', 2), gmdate('c'), $user['id'], $user['name']]);
+        query('INSERT INTO matches(id,request_id,round_date,team_a,team_b,goal_limit,created,created_by,author) VALUES (?,?,?,?,?,?,?,?,?)', [$id, $request, $date, matchTeam($date, $a, $teams[$a]), matchTeam($date, $c, $teams[$c]), 2, gmdate('c'), $user['id'], $user['name']]);
         database()->exec('COMMIT');
         result(['ok' => true, 'id' => $id]);
     }
@@ -162,33 +168,20 @@ function mutateMatch(string $action, array $b, array $user): never
         if (!is_bool($own))
             fail('Tipo de gol inválido.');
         query('INSERT INTO match_goals(id,request_id,match_id,team_id,player_id,own_goal,created,created_by,author) VALUES (?,?,?,?,?,?,?,?,?)', [identifier(), $request, $id, $tid, $pid, $own ? 1 : 0, gmdate('c'), $user['id'], $user['name']]);
-    } elseif (in_array($action, ['matchUndoGoal', 'matchAssist'], true)) {
+    } elseif ($action === 'matchUndoGoal') {
         $gid = textValue($b['goalId'] ?? '', 40);
         $goal = query('SELECT * FROM match_goals WHERE id=? AND match_id=? AND cancelled_at IS NULL', [$gid, $id])->fetch();
         if (!$goal)
             fail('Gol não encontrado.', 404);
         if (!empty($user['limited']) && $goal['created_by'] !== $user['id'])
             fail('Você pode corrigir apenas seus próprios lances.', 403);
-        if ($action === 'matchUndoGoal')
-            query('UPDATE match_goals SET cancelled_at=?,cancelled_by=? WHERE id=?', [gmdate('c'), $user['id'], $gid]);
-        else {
-            $pid = $b['playerId'] ?? null;
-            if ($goal['own_goal'])
-                fail('Gol contra não recebe assistência.');
-            if ($pid !== null && (!is_string($pid) || $pid === $goal['player_id'] || !query('SELECT player_id FROM stat_members WHERE team_id=? AND player_id=?', [$goal['team_id'], $pid])->fetch()))
-                fail('Escolha outro jogador do mesmo time para a assistência.');
-            query('UPDATE match_goals SET assistant_id=? WHERE id=?', [$pid, $gid]);
-        }
+        query('UPDATE match_goals SET cancelled_at=?,cancelled_by=? WHERE id=?', [gmdate('c'), $user['id'], $gid]);
     } elseif ($action === 'matchFinish') {
         $a = $score[$match['team_a']];
         $c = $score[$match['team_b']];
-        if ($a !== $c && max($score) < (int) $match['goal_limit'])
-            fail('Encerre quando um time atingir o limite de gols ou quando houver empate.');
         foreach (rows('SELECT g.*,p.guest FROM match_goals g JOIN stat_members p ON p.team_id=g.team_id AND p.player_id=g.player_id WHERE match_id=? AND cancelled_at IS NULL', [$id]) as $g) {
             if (!$g['own_goal'] && !$g['guest'])
                 matchStatistic($id, $g['team_id'], $g['player_id'], 'goal', $g['created_by'], $g['author']);
-            if (!$g['own_goal'] && $g['assistant_id'] && !query('SELECT guest FROM stat_members WHERE team_id=? AND player_id=?', [$g['team_id'], $g['assistant_id']])->fetchColumn())
-                matchStatistic($id, $g['team_id'], $g['assistant_id'], 'assist', $g['created_by'], $g['author']);
         }
         matchStatistic($id, $match['team_a'], null, $a === $c ? 'draw' : ($a > $c ? 'win' : 'loss'), $user['id'], $user['name']);
         matchStatistic($id, $match['team_b'], null, $a === $c ? 'draw' : ($c > $a ? 'win' : 'loss'), $user['id'], $user['name']);
@@ -198,6 +191,37 @@ function mutateMatch(string $action, array $b, array $user): never
     query('UPDATE matches SET version=version+1 WHERE id=?', [$id]);
     database()->exec('COMMIT');
     result(['ok' => true, 'id' => $id]);
+}
+
+function deleteMatch(array $b, array $user): never
+{
+    if (!empty($user['limited']))
+        fail('Somente um administrador pode excluir confrontos.', 403);
+    $id = textValue($b['matchId'] ?? '', 40);
+    $match = query('SELECT id,status,version FROM matches WHERE id=?', [$id])->fetch();
+    if (!$match)
+        fail('Jogo não encontrado.', 404);
+    if ($match['status'] !== 'cancelled')
+        fail('Cancele o confronto antes de excluí-lo.', 409);
+    if (($b['version'] ?? null) !== (int) $match['version'])
+        fail('Este jogo mudou em outro acesso. Atualize antes de continuar.', 409);
+
+    automaticBackup();
+    database()->exec('BEGIN IMMEDIATE');
+    try {
+        $eventIds = array_column(rows('SELECT event_id FROM match_stat_links WHERE match_id=?', [$id]), 'event_id');
+        query('DELETE FROM match_stat_links WHERE match_id=?', [$id]);
+        foreach ($eventIds as $eventId)
+            query('DELETE FROM stat_events WHERE id=?', [$eventId]);
+        query('DELETE FROM match_goals WHERE match_id=?', [$id]);
+        query('DELETE FROM matches WHERE id=?', [$id]);
+        database()->exec('COMMIT');
+    } catch (Throwable $e) {
+        if (database()->inTransaction())
+            database()->exec('ROLLBACK');
+        throw $e;
+    }
+    result(['ok' => true]);
 }
 
 function matchStatistic(string $mid, string $team, ?string $player, string $kind, string $authorId, string $author): void

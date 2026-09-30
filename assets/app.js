@@ -310,7 +310,7 @@ function renderAdmin() {
   const titles = {
     estatisticas: [
       "Cada lance conta.",
-      "Gols, assistências e resultados por rodada.",
+      "Gols e resultados por rodada.",
     ],
     rodada: ["A próxima terça.", "A turma de sempre. Novas combinações."],
     jogadores: [
@@ -1250,7 +1250,7 @@ function renderPublic() {
   $("#modeLink").textContent = session.user ? "Área administrativa" : "Login";
   $("#modeLink").href = "?view=admin";
   app.innerHTML =
-    '<main><div class="public-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>O jogo começa aqui.</h1></div><a class="button primary" href="?view=ranking">Ranking de gols e assistências</a></div>' +
+    '<main><div class="public-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>O jogo começa aqui.</h1></div><a class="button primary" href="?view=ranking">Ranking de gols</a></div>' +
     (r
       ? '<div class="page-heading"><div><p class="eyebrow">TIMES CONFIRMADOS</p><h2>' +
         day(r.date) +
@@ -1822,28 +1822,7 @@ async function renderMatchSettings() {
   const panel = document.createElement("section");
   panel.className = "panel";
   $("#content").append(panel);
-  try {
-    const config = await api("matchSettings");
-    if (!panel.isConnected) return;
-    panel.innerHTML = `<h2>Regras dos confrontos</h2><form id="matchSettingsForm"><label class="field">Gols para vencer<input name="goalLimit" type="number" min="1" max="99" step="1" value="${config.goalLimit}" required></label><p class="muted">O jogo termina quando um time atinge esse limite, ou pode ser encerrado em empate antes disso. Alterações valem apenas para novos confrontos.</p><button class="button dark">Salvar limite de gols</button></form>`;
-    $("#matchSettingsForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      $("button", form).disabled = true;
-      try {
-        await api("matchSettings", {
-          goalLimit: Number(new FormData(form).get("goalLimit")),
-        });
-        toast("Limite salvo para os próximos jogos.");
-      } catch (err) {
-        error(err.message, form);
-      } finally {
-        $("button", form).disabled = false;
-      }
-    };
-  } catch (err) {
-    panel.innerHTML = `<p role="alert">${esc(err.message)}</p>`;
-  }
+  panel.innerHTML = '<h2>Regras dos confrontos</h2><p><b>Limite fixo: 2 gols.</b></p><p class="muted">O jogo pode ser encerrado a qualquer momento. Nenhum time pode ultrapassar dois gols.</p>';
 }
 async function renderScorerSettings() {
   const panel = document.createElement("section");
@@ -2473,7 +2452,6 @@ let statsDate = "",
   statsBusy = false;
 const statLabels = {
   goal: "Gols",
-  assist: "Assistências",
   win: "Vitórias",
   draw: "Empates",
   loss: "Derrotas",
@@ -2503,7 +2481,7 @@ function publicMatchCards(matches) {
                 .filter((g) => !g.cancelled_at)
                 .map(
                   (g) =>
-                    `<p>${esc(g.player_name)}${g.own_goal ? " · gol contra" : " · gol"}${g.assistant_name ? ` · assistência de ${esc(g.assistant_name)}` : ""}</p>`,
+                    `<p>${esc(g.player_name)}${g.own_goal ? " · gol contra" : " · gol"}</p>`,
                 )
                 .join("") || "<p>Sem gols.</p>"
             }</details></div></article>`,
@@ -2541,7 +2519,7 @@ async function renderStatistics() {
     selectedMatchId = current?.id || "";
     content.innerHTML = `<div class="stats-toolbar"><label class="field">Data do jogo<select id="matchRound">${data.rounds.map((r) => `<option value="${r.date}" ${r.date === round.date ? "selected" : ""}>${day(r.date)} de ${r.date.slice(0, 4)}${r.published ? "" : " · Rascunho"}</option>`).join("")}</select></label><div class="actions"><a class="button" href="?view=ranking">Ver ranking</a><button class="button primary" id="newMatch" ${openMatch ? "disabled" : ""}>Cadastrar novo jogo</button><button class="button" id="refreshMatches">Atualizar</button></div></div>
       ${round.published ? "" : '<p class="notice">Os jogos desta rodada só aparecerão publicamente quando os times forem publicados.</p>'}
-      <p class="muted">Novos jogos: vence quem fizer ${payload.goalLimit} ${payload.goalLimit === 1 ? "gol" : "gols"} primeiro. Empates podem ser encerrados antes desse limite.</p>
+      <p class="muted">Cada time pode marcar no máximo ${payload.goalLimit} gols. O jogo pode ser encerrado a qualquer momento.</p>
       ${payload.matches.length ? `<label class="field">Confrontos desta data<select id="selectMatch">${payload.matches.map((m, i) => `<option value="${m.id}" ${m.id === selectedMatchId ? "selected" : ""}>Jogo ${i + 1} · ${matchTitle(m)} · ${matchStatus(m)}</option>`).join("")}</select></label>` : empty("Vamos começar um jogo?", "Escolha os dois times em Cadastrar novo jogo. Você poderá criar outros confrontos quando a partida terminar.")}
       <div id="matchFeedback" role="alert"></div><div id="matchEditor"></div>`;
     $("#matchRound").onchange = (e) => {
@@ -2572,10 +2550,13 @@ async function renderStatistics() {
         const result = await api(action, body);
         matchRequestIds.delete(key);
         if (action === "matchCreate") selectedMatchId = result.id;
+        if (action === "matchDelete") selectedMatchId = "";
         if (modal.open) modal.close();
         toast(
           action === "matchFinish"
             ? "Jogo encerrado. Ranking atualizado."
+            : action === "matchDelete"
+              ? "Confronto excluído definitivamente."
             : "Confronto atualizado.",
         );
         await renderStatistics();
@@ -2614,39 +2595,25 @@ async function renderStatistics() {
     const active = current.status === "open";
     const reached =
       Math.max(...Object.values(current.score)) >= current.goal_limit;
-    const finishable =
-      reached ||
-      current.score[current.team_a] === current.score[current.team_b];
+    const finishable = active;
     const activeGoals = current.goals.filter((g) => !g.cancelled_at);
     const matchNumber =
       payload.matches.findIndex((m) => m.id === current.id) + 1;
     $("#matchEditor").innerHTML =
-      `<section class="match-scoreboard"><p class="eyebrow">JOGO ${matchNumber} · ${matchStatus(current).toUpperCase()}</p><div class="match-score"><span>${teamName(Number(current.teams[0].team_index))}</span><strong>${current.score[current.team_a]} <small>×</small> ${current.score[current.team_b]}</strong><span>${teamName(Number(current.teams[1].team_index))}</span></div><p>Limite deste jogo: ${current.goal_limit} gols${active ? " · Confira as assistências antes de encerrar." : ""}</p></section>
+      `<section class="match-scoreboard"><p class="eyebrow">JOGO ${matchNumber} · ${matchStatus(current).toUpperCase()}</p><div class="match-score"><span>${teamName(Number(current.teams[0].team_index))}</span><strong>${current.score[current.team_a]} <small>×</small> ${current.score[current.team_b]}</strong><span>${teamName(Number(current.teams[1].team_index))}</span></div><p>Limite deste jogo: ${current.goal_limit} gols${active ? " · Pode ser encerrado a qualquer momento." : ""}</p></section>
       ${active && reached ? '<p class="notice">Limite atingido. Confira os lances e encerre o jogo para registrar o resultado.</p>' : ""}
-      <div class="match-team-grid">${current.teams.map((t) => `<section class="panel"><h2>${teamName(Number(t.team_index))}</h2>${t.members.map((p) => `<div class="stats-player"><div><b>${esc(p.name)}</b><small>${activeGoals.filter((g) => !g.own_goal && g.player_id === p.id && g.team_id === t.id).length} gols · ${activeGoals.filter((g) => g.assistant_id === p.id && g.team_id === t.id).length} assistências${Number(p.guest) ? " · Convidado, sem ranking individual" : ""}</small></div>${active ? `<div class="stats-buttons"><button class="button" data-match-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>+1 gol</button><button class="button" data-own-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>Gol contra</button></div>` : ""}</div>`).join("")}</section>`).join("")}</div>
-      <section class="panel"><h2>Lances deste confronto</h2><p class="muted">A assistência pertence a um gol e a outro jogador do mesmo time. Gol contra soma para o adversário e não recebe assistência.</p>${
+      <div class="match-team-grid">${current.teams.map((t) => `<section class="panel"><h2>${teamName(Number(t.team_index))}</h2>${t.members.map((p) => `<div class="stats-player"><div><b>${esc(p.name)}</b><small>${activeGoals.filter((g) => !g.own_goal && g.player_id === p.id && g.team_id === t.id).length} gols${Number(p.guest) ? " · Convidado, sem ranking individual" : ""}</small></div>${active ? `<div class="stats-buttons"><button class="button" data-match-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>+1 gol</button><button class="button" data-own-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>Gol contra</button></div>` : ""}</div>`).join("")}</section>`).join("")}</div>
+      <section class="panel"><h2>Lances deste confronto</h2><p class="muted">Gol contra soma um ponto para o adversário e não entra na artilharia.</p>${
         current.goals.length
           ? current.goals
               .map((g) => {
                 const t = current.teams.find((t) => t.id === g.team_id);
-                return `<article class="match-goal-row ${g.cancelled_at ? "stat-cancelled" : ""}"><div><b>${esc(g.player_name)} · ${g.own_goal ? "gol contra" : "gol"}</b><small>${teamName(Number(t.team_index))}${g.cancelled_at ? " · Cancelado" : ""}</small>${
-                  !g.cancelled_at && g.can_edit && !g.own_goal
-                    ? `<label class="field">Assistência<select data-goal-assist="${g.id}"><option value="">Sem assistência</option>${t.members
-                        .filter((p) => p.id !== g.player_id)
-                        .map(
-                          (p) =>
-                            `<option value="${esc(p.id)}" ${p.id === g.assistant_id ? "selected" : ""}>${esc(p.name)}</option>`,
-                        )
-                        .join("")}</select></label>`
-                    : g.assistant_name
-                      ? `<small>Assistência: ${esc(g.assistant_name)}</small>`
-                      : ""
-                }</div>${g.can_edit ? `<button class="button small" data-undo-goal="${g.id}">Desfazer gol</button>` : ""}</article>`;
+                return `<article class="match-goal-row ${g.cancelled_at ? "stat-cancelled" : ""}"><div><b>${esc(g.player_name)} · ${g.own_goal ? "gol contra" : "gol"}</b><small>${teamName(Number(t.team_index))}${g.cancelled_at ? " · Cancelado" : ""}</small></div>${g.can_edit ? `<button class="button small" data-undo-goal="${g.id}">Desfazer gol</button>` : ""}</article>`;
               })
               .join("")
           : "<p>Nenhum gol registrado.</p>"
       }</section>
-      <div class="actions">${active ? `<button class="button primary" id="finishMatch" ${finishable ? "" : "disabled"}>Encerrar jogo</button>` : ""}${current.can_cancel ? '<button class="button danger" id="cancelMatch">Cancelar confronto</button>' : ""}</div>${current.cancelled_reason ? `<p class="notice">Cancelado: ${esc(current.cancelled_reason)}</p>` : ""}${active && !finishable ? '<p class="muted">O jogo pode terminar quando um time atingir o limite de gols ou em empate.</p>' : ""}`;
+      <div class="actions">${active ? `<button class="button primary" id="finishMatch" ${finishable ? "" : "disabled"}>Encerrar jogo</button>` : ""}${current.can_cancel ? '<button class="button danger" id="cancelMatch">Cancelar confronto</button>' : ""}${current.can_delete ? '<button class="button danger" id="deleteMatch">Excluir do banco</button>' : ""}</div>${current.cancelled_reason ? `<p class="notice">Cancelado: ${esc(current.cancelled_reason)}</p>` : ""}`;
     const base = { matchId: current.id, version: current.version };
     const confirmAction = (title, message, action, body) => {
       openModal(
@@ -2682,21 +2649,12 @@ async function renderStatistics() {
             },
           )),
     );
-    $$("[data-goal-assist]").forEach(
-      (s) =>
-        (s.onchange = () =>
-          mutate("matchAssist", {
-            ...base,
-            goalId: s.dataset.goalAssist,
-            playerId: s.value || null,
-          })),
-    );
     $$("[data-undo-goal]").forEach(
       (b) =>
         (b.onclick = () =>
           confirmAction(
             "Desfazer gol",
-            "O gol e sua assistência serão retirados do placar.",
+            "O gol será retirado do placar.",
             "matchUndoGoal",
             { ...base, goalId: b.dataset.undoGoal },
           )),
@@ -2712,7 +2670,7 @@ async function renderStatistics() {
     if ($("#cancelMatch"))
       $("#cancelMatch").onclick = () => {
         openModal(
-          '<h2>Cancelar confronto</h2><p>Os gols, assistências e resultados deste jogo deixarão de contar no ranking. O histórico será preservado.</p><form id="cancelMatchForm"><label class="field">Motivo<input name="reason" required maxlength="250"></label><button class="button danger">Confirmar cancelamento</button></form>',
+          '<h2>Cancelar confronto</h2><p>Os gols e o resultado deste jogo deixarão de contar no ranking. O confronto ficará visível somente para administradores e poderá ser excluído depois.</p><form id="cancelMatchForm"><label class="field">Motivo<input name="reason" required maxlength="250"></label><button class="button danger">Confirmar cancelamento</button></form>',
         );
         $("#cancelMatchForm").onsubmit = (e) => {
           e.preventDefault();
@@ -2722,6 +2680,14 @@ async function renderStatistics() {
           });
         };
       };
+    if ($("#deleteMatch"))
+      $("#deleteMatch").onclick = () =>
+        confirmAction(
+          "Excluir confronto do banco",
+          "Esta exclusão é definitiva. O confronto cancelado e todos os seus lances serão removidos.",
+          "matchDelete",
+          base,
+        );
   } catch (err) {
     if (!content.isConnected) return;
     content.innerHTML = `<p role="alert">${esc(err.message)}</p><button class="button" id="retryMatches">Atualizar acesso</button>`;
@@ -2732,7 +2698,7 @@ async function renderStatistics() {
 function statHistory(events, administrative = false) {
   if (!events.length)
     return '<p class="muted">Nenhum lançamento por aqui ainda.</p>';
-  return `<div class="stats-history">${events.map((e) => `<article class="stats-history-row ${e.cancelled_at ? "stat-cancelled" : ""}"><div><b>${e.quantity} ${e.quantity === 1 ? { goal: "gol", assist: "assistência", win: "vitória", draw: "empate", loss: "derrota" }[e.kind] : statLabels[e.kind].toLowerCase()}${e.player_name ? ` · ${esc(e.player_name)}` : ""}</b><small>${day(e.round_date)} de ${e.round_date.slice(0, 4)} · ${teamName(Number(e.team_index))} · ${new Date(e.created).toLocaleString("pt-BR")}${administrative ? ` · ${esc(e.author)}` : ""}</small>${e.cancelled_at ? `<small>Cancelado${administrative ? `: ${esc(e.cancel_reason)}` : ""}</small>` : ""}</div>${administrative && !e.cancelled_at && e.can_cancel !== false ? `<button class="button small" data-stat-cancel="${e.id}">Cancelar</button>` : ""}</article>`).join("")}</div>`;
+  return `<div class="stats-history">${events.map((e) => `<article class="stats-history-row ${e.cancelled_at ? "stat-cancelled" : ""}"><div><b>${e.quantity} ${e.quantity === 1 ? { goal: "gol", win: "vitória", draw: "empate", loss: "derrota" }[e.kind] : statLabels[e.kind].toLowerCase()}${e.player_name ? ` · ${esc(e.player_name)}` : ""}</b><small>${day(e.round_date)} de ${e.round_date.slice(0, 4)} · ${teamName(Number(e.team_index))} · ${new Date(e.created).toLocaleString("pt-BR")}${administrative ? ` · ${esc(e.author)}` : ""}</small>${e.cancelled_at ? `<small>Cancelado${administrative ? `: ${esc(e.cancel_reason)}` : ""}</small>` : ""}</div>${administrative && !e.cancelled_at && e.can_cancel !== false ? `<button class="button small" data-stat-cancel="${e.id}">Cancelar</button>` : ""}</article>`).join("")}</div>`;
 }
 
 async function renderRankingPage() {
@@ -2745,7 +2711,6 @@ async function renderRankingPage() {
   const columns = [
     ["name", "Jogador"],
     ["goal", "Gols"],
-    ["assist", "Assistências"],
     ["win", "Vitórias"],
     ["draw", "Empates"],
     ["loss", "Derrotas"],

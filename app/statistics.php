@@ -21,11 +21,11 @@ function statistics(bool $public = false, string $date = ''): array
     $where = ' WHERE 1=1' . ($public ? ' AND r.published=1' : '') . ($date !== '' ? ' AND r.date=?' : '');
     $params = $date !== '' ? [$date] : [];
     $teams = rows('SELECT t.id,t.round_date,t.team_index,r.published FROM stat_teams t JOIN rounds r ON r.date=t.round_date' . $where . ' ORDER BY t.round_date DESC,t.team_index', $params);
-    $events = rows('SELECT e.*,t.round_date,t.team_index FROM stat_events e JOIN stat_teams t ON t.id=e.team_id JOIN rounds r ON r.date=t.round_date' . $where . ' ORDER BY e.id DESC', $params);
+    $events = rows("SELECT e.*,t.round_date,t.team_index FROM stat_events e JOIN stat_teams t ON t.id=e.team_id JOIN rounds r ON r.date=t.round_date" . $where . " AND e.kind<>'assist' ORDER BY e.id DESC", $params);
     $members = rows('SELECT m.* FROM stat_members m JOIN stat_teams t ON t.id=m.team_id JOIN rounds r ON r.date=t.round_date' . $where, $params);
     $players = [];
     foreach (rows('SELECT id,name FROM players ORDER BY name') as $p) {
-        $players[$p['id']] = $p + ['goal' => 0, 'assist' => 0, 'win' => 0, 'draw' => 0, 'loss' => 0, 'confirmed' => 0];
+        $players[$p['id']] = $p + ['goal' => 0, 'win' => 0, 'draw' => 0, 'loss' => 0, 'confirmed' => 0];
     }
     $byTeam = [];
     foreach ($teams as $t) {
@@ -37,7 +37,7 @@ function statistics(bool $public = false, string $date = ''): array
         $byTeam[$m['team_id']]['members'][] = ['id' => $m['player_id'], 'name' => $m['name'], 'guest' => (bool) $m['guest']];
         if ($m['guest'])
             continue;
-        $players[$m['player_id']] ??= ['id' => $m['player_id'], 'name' => $m['name'], 'goal' => 0, 'assist' => 0, 'win' => 0, 'draw' => 0, 'loss' => 0, 'confirmed' => 0];
+        $players[$m['player_id']] ??= ['id' => $m['player_id'], 'name' => $m['name'], 'goal' => 0, 'win' => 0, 'draw' => 0, 'loss' => 0, 'confirmed' => 0];
     }
     $names = array_column(rows('SELECT id,name FROM players'), 'name', 'id');
     foreach ($players as $id => &$p)
@@ -81,11 +81,11 @@ function recordStatistic(array $b, array $user): never
     $kind = $b['kind'] ?? '';
     $quantity = $b['quantity'] ?? null;
     $request = textValue($b['requestId'] ?? '', 80);
-    if (!is_int($team) || $team < 0 || $team > 2 || !in_array($kind, ['goal', 'assist', 'win', 'draw', 'loss'], true))
+    if (!is_int($team) || $team < 0 || $team > 2 || !in_array($kind, ['goal', 'win', 'draw', 'loss'], true))
         fail('Time ou tipo de lançamento inválido.');
     if (!is_int($quantity) || $quantity < 1 || $quantity > 999)
         fail('Informe uma quantidade inteira de 1 a 999.');
-    $pid = in_array($kind, ['goal', 'assist'], true) ? textValue($b['playerId'] ?? '', 40) : null;
+    $pid = $kind === 'goal' ? textValue($b['playerId'] ?? '', 40) : null;
     database()->exec('BEGIN IMMEDIATE');
     if (!empty($user['limited'])) {
         if (!scorekeeper())

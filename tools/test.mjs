@@ -630,15 +630,9 @@ try {
     "Mesmo identificador não aceita conteúdo diferente",
   );
   check(
-    (
-      await req("statAdd", {
-        ...event,
-        kind: "assist",
-        quantity: 2,
-        requestId: "assists",
-      })
-    ).status === 200,
-    "Lançar assistências",
+    (await req("statAdd", { ...event, kind: "assist", requestId: "assist" }))
+      .status === 400,
+    "Assistências não são aceitas",
   );
   for (const kind of ["win", "draw", "loss"])
     check(
@@ -667,7 +661,6 @@ try {
   let rankedPlayer = ranking.players.find((p) => p.id === member.id);
   check(
     rankedPlayer.goal === 3 &&
-      rankedPlayer.assist === 2 &&
       rankedPlayer.win === 2 &&
       rankedPlayer.draw === 2 &&
       rankedPlayer.loss === 2,
@@ -759,7 +752,6 @@ try {
     (await req("ranking", null, false)).data.players.every(
       (p) =>
         p.goal === 0 &&
-        p.assist === 0 &&
         p.win === 0 &&
         p.draw === 0 &&
         p.loss === 0,
@@ -1040,7 +1032,6 @@ try {
   const baseline = (await req("ranking")).data.players.find(
     (p) => p.id === member.id,
   );
-  const assistPlayer = statTeams[0].find((p) => !p.guest && p.id !== member.id);
   const addFirstGoal = {
     matchId: match.id,
     version: match.version,
@@ -1073,49 +1064,6 @@ try {
   );
   check(
     (
-      await scoringReq("matchFinish", {
-        matchId: match.id,
-        version: match.version,
-      })
-    ).status === 400,
-    "Não encerra 1 a 0 antes do limite",
-  );
-  check(
-    (
-      await scoringReq("matchAssist", {
-        matchId: match.id,
-        version: match.version,
-        goalId: match.goals[0].id,
-        playerId: member.id,
-      })
-    ).status === 400,
-    "Jogador não assiste o próprio gol",
-  );
-  check(
-    (
-      await scoringReq("matchAssist", {
-        matchId: match.id,
-        version: match.version,
-        goalId: match.goals[0].id,
-        playerId: outsider.id,
-      })
-    ).status === 400,
-    "Assistência exige jogador do mesmo time",
-  );
-  check(
-    (
-      await scoringReq("matchAssist", {
-        matchId: match.id,
-        version: match.version,
-        goalId: match.goals[0].id,
-        playerId: assistPlayer.id,
-      })
-    ).status === 200,
-    "Assistência vinculada ao gol",
-  );
-  match = await getMatch(match.id);
-  check(
-    (
       await scoringReq("matchGoal", {
         matchId: match.id,
         version: match.version,
@@ -1146,17 +1094,6 @@ try {
     "Limite atingido bloqueia novos gols de ambos os times",
   );
   const ownGoal = match.goals.find((g) => g.own_goal);
-  check(
-    (
-      await scoringReq("matchAssist", {
-        matchId: match.id,
-        version: match.version,
-        goalId: ownGoal.id,
-        playerId: outsider.id,
-      })
-    ).status === 400,
-    "Gol contra não aceita assistência",
-  );
   check(
     (
       await scoringReq("matchUndoGoal", {
@@ -1204,10 +1141,6 @@ try {
     "Gol contra não entra na artilharia e derrota é automática",
   );
   check(
-    afterMatch.players.find((p) => p.id === assistPlayer.id).assist === 1,
-    "Assistência entra no ranking ao encerrar",
-  );
-  check(
     (
       await scoringReq("matchGoal", {
         ...addFirstGoal,
@@ -1251,6 +1184,28 @@ try {
       baseline.win,
     "Cancelar confronto remove todos os efeitos no ranking",
   );
+  const cancelledMatch = (
+    await req("matches&date=" + statDate)
+  ).data.matches.find((m) => m.id === match.id);
+  check(
+    cancelledMatch?.status === "cancelled" &&
+      !(await req("publicMatches&date=" + statDate, null, false)).data.matches.some(
+        (m) => m.id === match.id,
+      ),
+    "Confronto cancelado aparece somente para administrador",
+  );
+  check(
+    (
+      await req("matchDelete", {
+        matchId: cancelledMatch.id,
+        version: cancelledMatch.version,
+      })
+    ).status === 200 &&
+      !(await req("matches&date=" + statDate)).data.matches.some(
+        (m) => m.id === match.id,
+      ),
+    "Administrador exclui confronto cancelado do banco",
+  );
   async function newTestMatch(label) {
     const c = await scoringReq("matchCreate", {
       ...matchInput,
@@ -1259,6 +1214,25 @@ try {
     check(c.status === 200, "Criar confronto " + label);
     return getMatch(c.data.id);
   }
+  let earlyMatch = await newTestMatch("1x0");
+  await scoringReq("matchGoal", {
+    matchId: earlyMatch.id,
+    version: earlyMatch.version,
+    teamId: earlyMatch.team_a,
+    playerId: member.id,
+    ownGoal: false,
+    requestId: "early-goal",
+  });
+  earlyMatch = await getMatch(earlyMatch.id);
+  check(
+    (
+      await scoringReq("matchFinish", {
+        matchId: earlyMatch.id,
+        version: earlyMatch.version,
+      })
+    ).status === 200,
+    "Jogo pode ser encerrado em 1 a 0 antes do limite",
+  );
   let zeroMatch = await newTestMatch("0x0");
   check(
     (
@@ -1326,25 +1300,24 @@ try {
       !JSON.stringify(publicGames).includes("request_id"),
     "Confrontos públicos preservam histórico sem dados de acesso",
   );
-  let oldLimit = await newTestMatch("old-limit");
-  await req("matchSettings", { goalLimit: 3 });
+  let oldLimit = await newTestMatch("fixed-limit");
   check(
-    (await getMatch(oldLimit.id)).goal_limit === 2,
-    "Alterar ajuste preserva limite do jogo existente",
+    (await req("matchSettings", { goalLimit: 3 })).status === 400 &&
+      (await getMatch(oldLimit.id)).goal_limit === 2,
+    "Limite de dois gols é fixo",
   );
   await scoringReq("matchCancel", {
     matchId: oldLimit.id,
     version: oldLimit.version,
     reason: "Jogo não começou",
   });
-  let newLimit = await newTestMatch("new-limit");
-  check(newLimit.goal_limit === 3, "Novo confronto usa limite atualizado");
+  let newLimit = await newTestMatch("new-fixed-limit");
+  check(newLimit.goal_limit === 2, "Novo confronto usa limite de dois gols");
   await scoringReq("matchCancel", {
     matchId: newLimit.id,
     version: newLimit.version,
     reason: "Teste de regra",
   });
-  await req("matchSettings", { goalLimit: 2 });
   const limitedStats = (await scoringReq("statistics")).data;
   check(
     !JSON.stringify(limitedStats).includes("created_by"),

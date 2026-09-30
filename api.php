@@ -24,12 +24,12 @@ try {
     if ($action === 'public') result(['rounds' => allRounds(true)]);
     if ($action === 'ranking') { database(); result(statistics(true, (string)($_GET['date'] ?? ''))); }
     if ($action === 'publicMatches') { database(); result(['matches'=>matchList(textValue($_GET['date']??'',10),true)]); }
-    if (in_array($action,['matches','matchCreate','matchGoal','matchAssist','matchUndoGoal','matchFinish','matchCancel'],true)) {
+    if (in_array($action,['matches','matchCreate','matchGoal','matchUndoGoal','matchFinish','matchCancel','matchDelete'],true)) {
         $u = statisticsUser();
         if ($action==='matches') {
             $date = textValue($_GET['date']??'',10);
             matchAccess($date,$u);
-            result(['matches'=>matchList($date,!empty($u['limited']),$u),'goalLimit'=>(int)setting('matchGoalLimit',2)]);
+            result(['matches'=>matchList($date,!empty($u['limited']),$u),'goalLimit'=>2]);
         }
         postOnly();
         mutateMatch($action,$b,$u);
@@ -148,11 +148,10 @@ try {
     }
     $u = admin();
     if ($action==='matchSettings') {
-        if ($method==='GET') result(['goalLimit'=>(int)setting('matchGoalLimit',2)]);
+        if ($method==='GET') result(['goalLimit'=>2,'fixed'=>true]);
         postOnly();
         $limit = $b['goalLimit']??null;
-        if (!is_int($limit) || $limit<1 || $limit>99) fail('Informe um limite inteiro de 1 a 99 gols.');
-        putSetting('matchGoalLimit',$limit);
+        if ($limit !== 2) fail('O limite dos confrontos é fixo em 2 gols.');
         result(['ok'=>true]);
     }
     if ($action === 'scorekeeperSettings' && $method === 'GET') {
