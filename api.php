@@ -3,6 +3,7 @@
 declare(strict_types=1);
 ini_set('display_errors', '0');
 require __DIR__ . '/app/bootstrap.php';
+require __DIR__ . '/app/api/sports.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -22,18 +23,7 @@ try {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail('Método não permitido.', 405);
     }
     if ($action === 'public') result(['rounds' => allRounds(true)]);
-    if ($action === 'ranking') { database(); result(statistics(true, (string)($_GET['date'] ?? ''))); }
-    if ($action === 'publicMatches') { database(); result(['matches'=>matchList(textValue($_GET['date']??'',10),true)]); }
-    if (in_array($action,['matches','matchCreate','matchGoal','matchUndoGoal','matchFinish','matchCancel','matchDelete'],true)) {
-        $u = statisticsUser();
-        if ($action==='matches') {
-            $date = textValue($_GET['date']??'',10);
-            matchAccess($date,$u);
-            result(['matches'=>matchList($date,!empty($u['limited']),$u),'goalLimit'=>2]);
-        }
-        postOnly();
-        mutateMatch($action,$b,$u);
-    }
+    handleSportsRoutes($action, $b);
     if ($action === 'session') {
         $user = null;
         if (isset($_SESSION['admin'])) $user = query('SELECT id,email,name,owner,active FROM admins WHERE id=? AND active=1', [$_SESSION['admin']])->fetch() ?: null;
@@ -59,25 +49,6 @@ try {
         session_regenerate_id(true);
         $_SESSION['scorekeeper'] = ['id' => 'scorer:' . identifier(), 'name' => $name . ' (senha de lançamento)', 'version' => $config['version']];
         result(['ok' => true]);
-    }
-    if (in_array($action, ['statistics','statAdd','statCancel','scoringRounds'], true)) {
-        $u = statisticsUser();
-        $limitedDate = !empty($u['limited']) ? scorekeeperRound() : null;
-        if ($action === 'scoringRounds') result(['rounds' => array_values(array_filter(allRounds(true), fn($r) => empty($u['limited']) || $r['date'] === $limitedDate))]);
-        if ($action === 'statistics') {
-            if (!empty($u['limited']) && !$limitedDate) result(['players' => [], 'teams' => [], 'events' => [], 'dates' => []]);
-            $stats = statistics(!empty($u['limited']), $limitedDate ?? '');
-            if (!empty($u['limited'])) {
-                $ownIds = array_column(rows('SELECT id FROM stat_events WHERE created_by=?', [$u['id']]), 'id');
-                foreach ($stats['events'] as &$event) $event['can_cancel'] = in_array($event['id'], $ownIds, true);
-                unset($event);
-            }
-            result($stats);
-        }
-        postOnly();
-        if (!empty($u['limited'])) fail('Use um confronto para registrar ou corrigir os lances.',403);
-        if ($action === 'statAdd') recordStatistic($b, $u);
-        cancelStatistic($b, $u);
     }
     if ($action === 'setup') {
         postOnly();

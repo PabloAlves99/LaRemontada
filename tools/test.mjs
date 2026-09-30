@@ -285,9 +285,9 @@ try {
     keepers: ["GK1", "GK2", "GK3"],
   });
   check(
-    output.includes("TIME 1") &&
-      output.includes("TIME 2") &&
-      output.includes("TIME 3") &&
+    output.includes("TIME AZUL") &&
+      output.includes("TIME VERMELHO") &&
+      output.includes("TIME PRETO") &&
       output.includes("29/09/2026") &&
       output.includes("Goleiro: GK1"),
     "Texto separado por time, com data e goleiros",
@@ -733,9 +733,11 @@ try {
   );
   await req("statCancel", { id: goalEvent.id, reason: "Reenvio" });
   ranking = (await req("ranking", null, false)).data;
+  const administrativeStats = (await req("statistics")).data;
   check(
     ranking.players.find((p) => p.id === member.id).goal === 0 &&
-      ranking.events.find((e) => e.id === goalEvent.id).cancelled_at,
+      administrativeStats.events.find((e) => e.id === goalEvent.id)
+        .cancelled_at,
     "Cancelamento repetido preserva histórico e não gera totais negativos",
   );
   check(

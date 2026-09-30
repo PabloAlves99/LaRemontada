@@ -12,28 +12,22 @@ import {
   normalizeRules,
   teamName,
 } from "./football.mjs?v=4";
-const $ = (s, el = document) => el.querySelector(s),
-  $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const esc = (s) =>
-  String(s ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-const num = (n) =>
-  n == null
-    ? "—"
-    : n.toLocaleString("pt-BR", {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      });
-const day = (d) =>
-  new Date(d + "T12:00:00").toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "long",
-  });
+import {
+  $,
+  $$,
+  actionButton as button,
+  emptyState as empty,
+  escapeHtml as esc,
+  formatDay as day,
+  formatNumber as num,
+  selectOptions as options,
+} from "./js/ui.js?v=1";
+import { createApiClient } from "./js/api-client.js?v=1";
+import {
+  buildVotingText,
+  downloadTeamCard as saveTeamCard,
+  exportPlayersCsv,
+} from "./js/exports.js?v=1";
 const params = new URLSearchParams(location.search),
   token = params.get("avaliar");
 let session = {},
@@ -48,6 +42,7 @@ let session = {},
   evaluation = {},
   saving = false,
   playerSort = "name";
+const api = createApiClient(() => session.csrf);
 const app = $("#app"),
   modal = $("#modal");
 const isMaster = () =>
@@ -67,23 +62,6 @@ function error(t, form) {
     form.append(el);
   }
   el.textContent = t;
-}
-async function api(action, body = null, extra = "") {
-  const r = await fetch("api.php?action=" + action + extra, {
-    method: body ? "POST" : "GET",
-    headers: body
-      ? { "Content-Type": "application/json", "X-CSRF-Token": session.csrf }
-      : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  let value;
-  try {
-    value = await r.json();
-  } catch {
-    throw Error("O servidor não respondeu corretamente. Tente novamente.");
-  }
-  if (!r.ok) throw Error(value.error || "Não foi possível concluir.");
-  return value;
 }
 function openModal(html) {
   $("#modalBody").innerHTML = html;
@@ -108,45 +86,6 @@ window.addEventListener("beforeunload", (e) => {
     e.returnValue = "";
   }
 });
-function button(label, action, cls = "") {
-  return (
-    '<button class="button ' +
-    cls +
-    '" data-action="' +
-    action +
-    '">' +
-    label +
-    "</button>"
-  );
-}
-function empty(title, text, action = "") {
-  return (
-    '<div class="empty"><div class="big">◇</div><h2>' +
-    title +
-    "</h2><p>" +
-    text +
-    "</p>" +
-    action +
-    "</div>"
-  );
-}
-function options(values, value, blank = "Não informada") {
-  return (
-    '<option value="">' +
-    blank +
-    "</option>" +
-    values
-      .map(
-        (p) =>
-          "<option " +
-          (p === value ? "selected" : "") +
-          ">" +
-          esc(p) +
-          "</option>",
-      )
-      .join("")
-  );
-}
 function scoreBadge(p) {
   return (
     '<span class="score ' +
@@ -452,7 +391,7 @@ function teamCards(r, editable = false, privateView = false) {
     "</div>"
   );
 }
-function renderRound() {
+function renderRoundBase() {
   const active = data.players.filter((p) => p.active);
   selected = new Set(
     [...selected].filter((id) => active.some((p) => p.id === id)),
@@ -632,7 +571,7 @@ async function saveRound(publish) {
     saving = false;
   }
 }
-function editMember(t, i) {
+function editMemberBase(t, i) {
   const p = round.teams[t][i],
     used = new Set(round.teams.flat().map((p) => p.id));
   openModal(
@@ -718,7 +657,7 @@ function editMember(t, i) {
       }
     };
 }
-function renderPlayers() {
+function renderPlayersBase() {
   const ps = data.players.filter((p) => p.active);
   $("#content").innerHTML =
     '<div class="summary"><div><strong>' +
@@ -863,7 +802,7 @@ function playerModal(p = {}) {
     }
   };
 }
-function detailModal(p) {
+function detailModalSummary(p) {
   const rs = data.reviews.filter((r) => r.player_id === p.id),
     seen = new Set();
   openModal(
@@ -945,7 +884,7 @@ function ratingModal(p) {
     }
   };
 }
-function renderReviews() {
+function renderReviewsBase() {
   $("#content").innerHTML =
     '<div class="panel dark"><div class="panel-head"><div><h2>Convide quem conhece a turma.</h2><p class="muted">Cada pessoa recebe um link individual e avalia somente quem conhece.</p></div>' +
     button("+ Criar link", "invite", "primary") +
@@ -1052,7 +991,7 @@ function renderReviews() {
         ratingModal(data.players.find((p) => p.id === b.dataset.review))),
   );
 }
-function renderHistory() {
+function renderHistorySummary() {
   $("#content").innerHTML = data.rounds.length
     ? '<div class="history-grid">' +
       data.rounds
@@ -1098,7 +1037,7 @@ function renderHistory() {
       }),
   );
 }
-function renderSettings() {
+function renderSettingsBase() {
   $("#content").innerHTML =
     '<div class="form-grid"><div class="panel"><h2>Goleiros fixos</h2><form id="settingsForm">' +
     data.keepers
@@ -1245,7 +1184,7 @@ async function copyLink(url) {
     );
   }
 }
-function renderPublic() {
+function renderPublicBase() {
   const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
   $("#modeLink").textContent = session.user ? "Área administrativa" : "Login";
   $("#modeLink").href = "?view=admin";
@@ -1344,24 +1283,9 @@ async function manageAction(action, body, message) {
   }
 }
 function teamsTextForVote(r) {
-  return [
-    "⚽ LA REMONTADA — PRÉVIA PARA VOTAÇÃO",
-    day(r.date),
-    "Notas: média geral de cada jogador.",
-    ...r.teams.map((team, i) =>
-      [
-        teamName(i).toUpperCase(),
-        ...(r.keepers?.[i] ? ["Goleiro: " + r.keepers[i]] : []),
-        ...team.map((p, n) => {
-          if (!p.scores) return n + 1 + ". " + p.name + " — sem nota";
-          const scores = p.scores.map((score) => Number(score));
-          return n + 1 + ". " + p.name + " — média " + num(mean(scores));
-        }),
-      ].join("\n"),
-    ),
-  ].join("\n\n");
+  return buildVotingText(r);
 }
-function shareTeams(r, withScores = false) {
+function shareTeamsBase(r, withScores = false) {
   const text = withScores ? teamsTextForVote(r) : teamsText(r);
   openModal(
     "<h2>" +
@@ -1401,9 +1325,8 @@ function shareTeams(r, withScores = false) {
     } else await copy();
   };
 }
-const originalRound = renderRound;
-renderRound = function () {
-  originalRound();
+function renderRoundManaged() {
+  renderRoundBase();
   if (!round) return;
   const bar = document.createElement("div");
   bar.className = "management-actions";
@@ -1441,10 +1364,9 @@ renderRound = function () {
       renderRound();
     };
   };
-};
-const originalPlayers = renderPlayers;
-renderPlayers = function () {
-  originalPlayers();
+}
+function renderPlayers() {
+  renderPlayersBase();
   function controls() {
     $$("[data-pedit]").forEach((b) => {
       const p = data.players.find((p) => p.id === b.dataset.pedit),
@@ -1487,8 +1409,8 @@ renderPlayers = function () {
   }
   controls();
   $("#searchPlayers").addEventListener("input", controls);
-};
-detailModal = function (p) {
+}
+function detailModal(p) {
   const rs = data.reviews.filter((r) => r.player_id === p.id),
     seen = new Set();
   openModal(
@@ -1613,10 +1535,9 @@ detailModal = function (p) {
         }
       }),
   );
-};
-const originalReviews = renderReviews;
-renderReviews = function () {
-  originalReviews();
+}
+function renderReviews() {
+  renderReviewsBase();
   if (!isMaster()) {
     $("[data-action=invite]")?.remove();
     $$("[data-review]").forEach((button) => button.remove());
@@ -1675,8 +1596,8 @@ renderReviews = function () {
     };
     tr.lastElementChild.append(b);
   });
-};
-renderHistory = function () {
+}
+function renderHistory() {
   $("#content").innerHTML = data.rounds.length
     ? '<div class="history-grid">' +
       data.rounds
@@ -1762,10 +1683,9 @@ renderHistory = function () {
           }
         }),
     );
-};
-const originalSettings = renderSettings;
-renderSettings = function () {
-  originalSettings();
+}
+function renderSettings() {
+  renderSettingsBase();
   if (isMaster())
     $$("#content .eval-player").forEach((row, i) => {
       const a = data.admins[i];
@@ -1817,7 +1737,7 @@ renderSettings = function () {
   renderDrawPreferences();
   renderScorerSettings();
   renderMatchSettings();
-};
+}
 async function renderMatchSettings() {
   const panel = document.createElement("section");
   panel.className = "panel";
@@ -1999,9 +1919,8 @@ function renderDrawPreferences() {
       renderSettings();
   };
 }
-const originalPublic = renderPublic;
-renderPublic = function () {
-  originalPublic();
+function renderPublic() {
+  renderPublicBase();
   const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
   if (r && session.user) {
     const actions = document.createElement("div");
@@ -2020,7 +1939,7 @@ renderPublic = function () {
     $("#app main").append(summary);
     renderPublicRoundSummary(r, summary);
   }
-};
+}
 
 async function renderPublicRoundSummary(round, target) {
   target.innerHTML =
@@ -2047,9 +1966,8 @@ async function renderPublicRoundSummary(round, target) {
   }
 }
 
-const originalMember = editMember;
-editMember = function (t, i) {
-  originalMember(t, i);
+function editMember(t, i) {
+  editMemberBase(t, i);
   const p = round.teams[t][i],
     used = new Set(round.teams.flat().map((x) => x.id));
   if (!$("#replaceForm")) {
@@ -2134,7 +2052,7 @@ editMember = function (t, i) {
     renderRound();
   };
   $("#modalBody").append(remove);
-};
+}
 
 function attendanceMap(forDate = date) {
   return Object.fromEntries(
@@ -2342,41 +2260,10 @@ function renderDashboard() {
   $("[data-action=exportCsv]").onclick = exportCsv;
 }
 function exportCsv() {
-  const totals = Object.fromEntries(
-    (data.attendanceStats || []).map((s) => [s.id, s.confirmed]),
-  );
-  const lines = [
-    ["Jogador", "Posição", "Confirmações", "Avaliações", "Média"],
-  ].concat(
-    data.players.map((p) => [
-      p.name,
-      p.position,
-      totals[p.id] || 0,
-      p.count,
-      mean(p.scores)?.toFixed(1) || "",
-    ]),
-  );
-  const csv =
-    "\uFEFF" +
-    lines
-      .map((row) =>
-        row
-          .map((v) => '"' + String(v ?? "").replaceAll('"', '""') + '"')
-          .join(";"),
-      )
-      .join("\r\n");
-  const url = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-  );
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "la-remontada-estatisticas.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  exportPlayersCsv(data.players, data.attendanceStats || []);
 }
-const originalRoundWithAttendance = renderRound;
-renderRound = function () {
-  originalRoundWithAttendance();
+function renderRound() {
+  renderRoundManaged();
   const actions = $("#content .round-roster .actions");
   if (!actions) return;
   const attendance = attendanceMap();
@@ -2398,54 +2285,18 @@ renderRound = function () {
     selected = new Set(confirmed);
     renderRound();
   };
-};
-const originalShareTeams = shareTeams;
-shareTeams = function (r, withScores = false) {
-  originalShareTeams(r, withScores);
+}
+function shareTeams(r, withScores = false) {
+  shareTeamsBase(r, withScores);
   const actions = $("#teamMessage").closest(".field").nextElementSibling;
   const imageButton = document.createElement("button");
   imageButton.className = "button";
   imageButton.textContent = "Baixar card";
   imageButton.onclick = () => downloadTeamCard(r);
   actions.append(imageButton);
-};
+}
 function downloadTeamCard(r) {
-  const canvas = document.createElement("canvas"),
-    scale = 2,
-    w = 1080,
-    h = 1320;
-  canvas.width = w * scale;
-  canvas.height = h * scale;
-  const c = canvas.getContext("2d");
-  c.scale(scale, scale);
-  c.fillStyle = "#101c1b";
-  c.fillRect(0, 0, w, h);
-  c.fillStyle = "#c9f96b";
-  c.font = "800 38px Arial";
-  c.fillText("⚽  LA REMONTADA", 60, 85);
-  c.fillStyle = "#f4f9ed";
-  c.font = "700 30px Arial";
-  c.fillText(day(r.date).toUpperCase(), 60, 132);
-  r.teams.forEach((team, i) => {
-    const x = 60 + i * 340;
-    c.fillStyle = "#20352e";
-    c.fillRect(x, 185, 300, 1030);
-    c.fillStyle = "#c9f96b";
-    c.font = "800 27px Arial";
-    c.fillText(teamName(i).toUpperCase(), x + 24, 235);
-    c.fillStyle = "#b4bdb6";
-    c.font = "18px Arial";
-    c.fillText("GOLEIRO: " + (r.keepers?.[i] || "A definir"), x + 24, 275);
-    c.fillStyle = "#f4f9ed";
-    c.font = "22px Arial";
-    team.forEach((p, n) =>
-      c.fillText(n + 1 + ". " + p.name.slice(0, 22), x + 24, 335 + n * 105),
-    );
-  });
-  const a = document.createElement("a");
-  a.href = canvas.toDataURL("image/png");
-  a.download = "la-remontada-" + r.date + ".png";
-  a.click();
+  saveTeamCard(r);
 }
 
 let statsDate = "",

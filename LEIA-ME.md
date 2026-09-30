@@ -2,6 +2,8 @@
 
 Aplicativo local em PHP 8.1+ e SQLite, sem Node.js, npm ou serviços externos.
 
+Para arquitetura, mapa de arquivos e padrões de manutenção, consulte [DOCUMENTACAO-TECNICA.md](DOCUMENTACAO-TECNICA.md).
+
 ## Primeiro acesso
 
 Se estiver em C:\Apache24\htdocs\laRemontada, acesse:
