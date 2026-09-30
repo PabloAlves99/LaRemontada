@@ -121,7 +121,8 @@ Não é necessário migrar para MySQL para este grupo. Confirme a disponibilidad
 - app/bootstrap.php: conexão SQLite, schema e autenticação.
 - assets/app.js: telas e interações.
 - assets/football.mjs: sorteio e critérios.
-- assets/style.css: layout responsivo.
+- assets/style.css: layout funcional das telas.
+- assets/css/experience.css: fluidez, hierarquia visual e refinamentos responsivos.
 - storage/: banco e sessões; bloqueada para acesso web.
 - router.php e INICIAR-LOCAL.cmd: alternativa de desenvolvimento local.
 

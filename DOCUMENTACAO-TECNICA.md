@@ -37,6 +37,7 @@ Fluxo principal:
 - `app.js`: composição das telas, estado da sessão e coordenação dos recursos.
 - `football.mjs`: regras puras do sorteio, cálculo de força, avisos e texto dos times.
 - `style.css`: estilos globais e responsivos.
+- `css/experience.css`: camada de experiência visual, navegação, transições e refinamentos responsivos. Não contém regras de negócio.
 - `favicon.svg`: ícone da aplicação.
 
 ### Frontend compartilhado — `assets/js/`
@@ -138,7 +139,8 @@ Regras atuais:
 | Rotas de confrontos/ranking | `app/api/sports.php` |
 | Ranking e agregações | `app/statistics.php` |
 | Login, sessão e permissões | `app/bootstrap.php` e `api.php` |
-| Aparência | `assets/style.css` |
+| Aparência funcional das telas | `assets/style.css` |
+| Fluidez, hierarquia visual e responsividade | `assets/css/experience.css` |
 | Segurança HTTP | `index.php`, `.htaccess`, `api.php` |
 | Instalação/hospedagem | `LEIA-ME.md` |
 
@@ -176,7 +178,7 @@ A estrutura está em transição e já não usa sobrescritas implícitas de fun�
 3. Extrair rodada/presença para `assets/js/features/rounds.js` e `attendance.js`.
 4. Dividir as ações restantes de `api.php` em rotas `auth`, `players`, `reviews`, `rounds` e `settings`.
 5. Separar `app/bootstrap.php` em conexão/schema, autenticação e repositórios de leitura.
-6. Dividir `style.css` em base, componentes e páginas, mantendo uma folha agregadora.
+6. Migrar gradualmente estilos funcionais de `style.css` para arquivos por componente, preservando `css/experience.css` como a camada de UX.
 7. Substituir migrações implícitas por uma tabela `schema_migrations` numerada.
 
 Essas etapas devem ser feitas uma por vez, mantendo a suíte verde entre cada extração.

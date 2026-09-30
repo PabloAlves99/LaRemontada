@@ -14,17 +14,19 @@ header('X-Content-Type-Options: nosniff');
     <meta name="description" content="Os times, a turma e a história do nosso futebol de terça.">
     <link rel="icon" href="assets/favicon.svg">
     <link rel="stylesheet" href="assets/style.css?v=10">
-    <script type="module" src="assets/app.js?v=17"></script>
+    <link rel="stylesheet" href="assets/css/experience.css?v=1">
+    <script type="module" src="assets/app.js?v=20"></script>
 </head>
 
 <body>
+    <a class="skip-link" href="#app">Pular para o conteúdo</a>
     <header class="topbar"><a class="brand" href="./"><span class="crest">LR<span>✦</span></span><span>LA
                 REMONTADA<small>FUTEBOL DE TERÇA</small></span></a>
         <div class="top-actions"><span class="season">SOCIETY · 6 NA LINHA</span><a id="modeLink"
-                href="?view=admin">Login</a></div>
+                href="?view=admin">Área administrativa</a></div>
     </header>
-    <div id="app" aria-live="polite">
-        <div class="loading">Preparando o campo…</div>
+    <div id="app" aria-live="polite" tabindex="-1">
+        <div class="loading"><span class="loading-ball" aria-hidden="true">⚽</span><span>Preparando o campo…</span></div>
     </div>
     <div id="toast" role="status"></div>
     <dialog id="modal"><button class="close" aria-label="Fechar">×</button>

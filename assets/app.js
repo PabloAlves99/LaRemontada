@@ -30,9 +30,18 @@ import {
 } from "./js/exports.js?v=1";
 const params = new URLSearchParams(location.search),
   token = params.get("avaliar");
+const adminTabs = new Set([
+  "rodada",
+  "estatisticas",
+  "jogadores",
+  "avaliacoes",
+  "historico",
+  "painel",
+  "ajustes",
+]);
 let session = {},
   data = {},
-  tab = params.get("tab") === "estatisticas" ? "estatisticas" : "rodada",
+  tab = adminTabs.has(params.get("tab")) ? params.get("tab") : "rodada",
   selected = new Set(),
   round = null,
   date = nextTuesday(),
@@ -274,6 +283,11 @@ function renderAdmin() {
     ],
   };
   const [title, sub] = titles[tab];
+  const currentUrl = new URL(location.href);
+  currentUrl.searchParams.set("view", "admin");
+  if (tab === "rodada") currentUrl.searchParams.delete("tab");
+  else currentUrl.searchParams.set("tab", tab);
+  history.replaceState({ tab }, "", currentUrl);
   app.innerHTML =
     "<main>" +
     header(
@@ -304,12 +318,13 @@ function renderAdmin() {
           "</button>",
       )
       .join("") +
-    '</nav><section class="tab-content" id="content"></section></main>';
+    '</nav><section class="tab-content" id="content" tabindex="-1"></section></main>';
   $$("[data-tab]").forEach(
     (b) =>
       (b.onclick = () => {
         tab = b.dataset.tab;
         renderAdmin();
+        $("#content")?.focus({ preventScroll: true });
       }),
   );
   $("[data-action=logout]").onclick = async () => {
@@ -396,8 +411,15 @@ function renderRoundBase() {
   selected = new Set(
     [...selected].filter((id) => active.some((p) => p.id === id)),
   );
+  const roundStep = round ? (round.published && !dirty ? 3 : 2) : 1;
   $("#content").innerHTML =
-    '<div class="panel-head"><div class="actions"><label for="roundDate">Data da rodada</label><input id="roundDate" type="date" value="' +
+    '<ol class="workflow" aria-label="Etapas para organizar a rodada"><li class="workflow-step ' +
+    (roundStep > 1 ? "done" : "active") +
+    '"><strong>1</strong> Confirme quem vai jogar</li><li class="workflow-step ' +
+    (roundStep === 2 ? "active" : roundStep > 2 ? "done" : "") +
+    '"><strong>2</strong> Sorteie e ajuste os times</li><li class="workflow-step ' +
+    (roundStep === 3 ? "active" : "") +
+    '"><strong>3</strong> Salve ou publique</li></ol><div class="panel-head"><div class="actions"><label for="roundDate">Data da rodada</label><input id="roundDate" type="date" value="' +
     date +
     '"></div><span class="pill ' +
     (round?.published ? "green" : "") +
@@ -1186,7 +1208,7 @@ async function copyLink(url) {
 }
 function renderPublicBase() {
   const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
-  $("#modeLink").textContent = session.user ? "Área administrativa" : "Login";
+  $("#modeLink").textContent = "Área administrativa";
   $("#modeLink").href = "?view=admin";
   app.innerHTML =
     '<main><div class="public-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>O jogo começa aqui.</h1></div><a class="button primary" href="?view=ranking">Ranking de gols</a></div>' +
@@ -2554,7 +2576,7 @@ function statHistory(events, administrative = false) {
 
 async function renderRankingPage() {
   $("#modeLink").href = "?view=admin";
-  $("#modeLink").textContent = session.user ? "Área administrativa" : "Login";
+  $("#modeLink").textContent = "Área administrativa";
   let stats = await api("ranking");
   let period = "",
     sortKey = "win",
