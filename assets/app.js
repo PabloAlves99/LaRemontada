@@ -1773,7 +1773,7 @@ async function renderScorerSettings() {
   try {
     const config = await api("scorekeeperSettings");
     if (!panel.isConnected) return;
-    panel.innerHTML = `<h2>Senha de lançamento</h2><p>Compartilhe esta senha com quem vai marcar os gols e resultados. Ela permite cadastrar confrontos e lançar gols somente na próxima rodada publicada (incluindo a de hoje). A pessoa pode corrigir os próprios lances enquanto o jogo estiver aberto. Rodadas passadas ficam bloqueadas.</p><p class="muted">${config.enabled ? "Acesso por senha ativado." : "Acesso por senha desativado."} A senha vale até você trocá-la ou desativá-la. Cada troca encerra os acessos anteriores.</p><p>${config.round ? `Rodada liberada: ${day(config.round)} de ${config.round.slice(0, 4)}.` : "Publique a próxima rodada para liberar os confrontos."}</p><form id="scorerSettingsForm"><label class="field">Nova senha<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required><small>Pelo menos 10 caracteres. A senha salva não é exibida.</small></label><button class="button dark">${config.enabled ? "Trocar senha" : "Ativar senha"}</button></form><div class="actions public-share-actions"><button class="button" id="copyScoringLink">Copiar link de lançamento</button>${config.enabled ? '<button class="button danger" id="disableScoring">Desativar acesso por senha</button>' : ""}</div>`;
+    panel.innerHTML = `<h2>Senha de lançamento</h2><p>Compartilhe esta senha com quem vai marcar os gols e resultados. Ela permite escolher qualquer rodada publicada, cadastrar confrontos e lançar gols. A pessoa pode corrigir os próprios lances enquanto o jogo estiver aberto. Rascunhos continuam bloqueados.</p><p class="muted">${config.enabled ? "Acesso por senha ativado." : "Acesso por senha desativado."} A senha vale até você trocá-la ou desativá-la. Cada troca encerra os acessos anteriores.</p><p>${config.round ? `Rodada padrão: ${day(config.round)} de ${config.round.slice(0, 4)}. A pessoa poderá escolher outra rodada publicada.` : "Publique uma rodada para liberar os confrontos."}</p><form id="scorerSettingsForm"><label class="field">Nova senha<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required><small>Pelo menos 10 caracteres. A senha salva não é exibida.</small></label><button class="button dark">${config.enabled ? "Trocar senha" : "Ativar senha"}</button></form><div class="actions public-share-actions"><button class="button" id="copyScoringLink">Copiar link de lançamento</button>${config.enabled ? '<button class="button danger" id="disableScoring">Desativar acesso por senha</button>' : ""}</div>`;
     $("#copyScoringLink").onclick = () =>
       copyLink(new URL("?view=lancamentos", location.href).href);
     $("#scorerSettingsForm").onsubmit = async (e) => {
@@ -1834,6 +1834,7 @@ async function renderScoringAccess() {
     return;
   }
   data = await api("scoringRounds");
+  statsDate = data.rounds[0]?.date || "";
   tab = "estatisticas";
   app.innerHTML =
     "<main>" +
@@ -2344,6 +2345,19 @@ function matchStatus(m) {
   if (m.score[m.team_a] === m.score[m.team_b]) return "Empate";
   return `Vitória do ${teamName(Number(m.teams.find((t) => t.id === (m.score[m.team_a] > m.score[m.team_b] ? m.team_a : m.team_b)).team_index))}`;
 }
+function openMatchesWarning(matches) {
+  const open = matches.filter((match) => match.status === "open");
+  if (!open.length) return "";
+  return `<section class="open-matches-warning" aria-labelledby="openMatchesTitle">
+    <div class="open-matches-head"><div><p class="eyebrow">ATENÇÃO</p><h2 id="openMatchesTitle">${open.length === 1 ? "1 jogo em aberto" : `${open.length} jogos em aberto`}</h2><p>Confira o responsável e selecione o confronto certo antes de lançar um gol.</p></div><span class="pill amber">${open.length} ${open.length === 1 ? "ativo" : "ativos"}</span></div>
+    <div class="open-matches-list">${open
+      .map(
+        (match) =>
+          `<button class="open-match-card ${match.id === selectedMatchId ? "active" : ""}" data-open-match="${esc(match.id)}"><span><b>${matchTitle(match)}</b><small>Responsável: ${esc(match.author || "Organização")} · Iniciado em ${new Date(match.created).toLocaleString("pt-BR")}</small></span><span aria-hidden="true">Abrir →</span></button>`,
+      )
+      .join("")}</div>
+  </section>`;
+}
 function publicMatchCards(matches) {
   return matches.length
     ? `<div class="match-list">${matches
@@ -2371,7 +2385,7 @@ async function renderStatistics() {
         "Nenhuma rodada disponível.",
         session.user
           ? "Salve os times de uma rodada para cadastrar os jogos."
-          : "Aguarde a publicação da próxima rodada. Rodadas passadas ficam bloqueadas.",
+          : "Aguarde a publicação de uma rodada para começar os lançamentos.",
       );
       return;
     }
@@ -2390,10 +2404,11 @@ async function renderStatistics() {
       openMatch ||
       payload.matches.at(-1);
     selectedMatchId = current?.id || "";
-    content.innerHTML = `<div class="stats-toolbar"><label class="field">Data do jogo<select id="matchRound">${data.rounds.map((r) => `<option value="${r.date}" ${r.date === round.date ? "selected" : ""}>${day(r.date)} de ${r.date.slice(0, 4)}${r.published ? "" : " · Rascunho"}</option>`).join("")}</select></label><div class="actions"><a class="button" href="?view=ranking">Ver ranking</a><button class="button primary" id="newMatch" ${openMatch ? "disabled" : ""}>Cadastrar novo jogo</button><button class="button" id="refreshMatches">Atualizar</button></div></div>
+    content.innerHTML = `<div class="stats-toolbar"><label class="field">Data do jogo<select id="matchRound">${data.rounds.map((r) => `<option value="${r.date}" ${r.date === round.date ? "selected" : ""}>${day(r.date)} de ${r.date.slice(0, 4)}${r.published ? "" : " · Rascunho"}</option>`).join("")}</select></label><div class="actions"><a class="button" href="?view=ranking">Ver ranking</a><button class="button primary" id="newMatch">Cadastrar novo jogo</button><button class="button" id="refreshMatches">Atualizar</button></div></div>
       ${round.published ? "" : '<p class="notice">Os jogos desta rodada só aparecerão publicamente quando os times forem publicados.</p>'}
+      ${openMatchesWarning(payload.matches)}
       <p class="muted">Cada time pode marcar no máximo ${payload.goalLimit} gols. O jogo pode ser encerrado a qualquer momento.</p>
-      ${payload.matches.length ? `<label class="field">Confrontos desta data<select id="selectMatch">${payload.matches.map((m, i) => `<option value="${m.id}" ${m.id === selectedMatchId ? "selected" : ""}>Jogo ${i + 1} · ${matchTitle(m)} · ${matchStatus(m)}</option>`).join("")}</select></label>` : empty("Vamos começar um jogo?", "Escolha os dois times em Cadastrar novo jogo. Você poderá criar outros confrontos quando a partida terminar.")}
+      ${payload.matches.length ? `<label class="field">Confrontos desta data<select id="selectMatch">${payload.matches.map((m, i) => `<option value="${m.id}" ${m.id === selectedMatchId ? "selected" : ""}>Jogo ${i + 1} · ${matchTitle(m)} · ${matchStatus(m)}</option>`).join("")}</select></label>` : empty("Vamos começar um jogo?", "Escolha os dois times em Cadastrar novo jogo. Outros responsáveis podem cadastrar confrontos ao mesmo tempo.")}
       <div id="matchFeedback" role="alert"></div><div id="matchEditor"></div>`;
     $("#matchRound").onchange = (e) => {
       statsDate = e.target.value;
@@ -2406,6 +2421,13 @@ async function renderStatistics() {
         selectedMatchId = e.target.value;
         renderStatistics();
       };
+    $$('[data-open-match]').forEach(
+      (button) =>
+        (button.onclick = () => {
+          selectedMatchId = button.dataset.openMatch;
+          renderStatistics();
+        }),
+    );
     const mutate = async (action, body) => {
       if (statsBusy) return;
       statsBusy = true;

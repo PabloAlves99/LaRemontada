@@ -65,7 +65,7 @@ Essa pasta contém dados privados e não deve ser publicada, versionada ou envia
 - `admins`: contas administrativas, hash de senha, estado e Master.
 - `login_attempts`: limitação de tentativas por origem.
 - `settings`: preferências serializadas em JSON.
-- Sessões: administrador normal ou acesso limitado por senha de lançamento.
+- Sessões: administrador normal ou acesso limitado por senha de lançamento. O acesso limitado pode escolher qualquer rodada publicada, com a mais recente como padrão, mas nunca recebe avaliações ou permissões administrativas.
 
 O administrador Master é identificado pelo campo `owner` e pelo e-mail definido em `OWNER_EMAIL`. Apenas ele altera avaliações. Administradores comuns mantêm as demais permissões administrativas.
 
@@ -97,7 +97,7 @@ Regras atuais:
 
 - teto fixo de 2 gols;
 - encerramento permitido em qualquer placar;
-- somente um confronto aberto por rodada;
+- vários confrontos podem ficar abertos na mesma rodada, cada um isolado por identificador e versão;
 - cancelamento retira todos os efeitos do ranking;
 - cancelados aparecem apenas para administradores;
 - exclusão definitiva exige cancelamento prévio e gera backup automático;

@@ -34,7 +34,10 @@ function handleSportsRoutes(string $action, array $body): void
             $date = textValue($_GET['date'] ?? '', 10);
             matchAccess($date, $user);
             result([
-                'matches' => matchList($date, !empty($user['limited']), $user),
+                // Acesso por senha continua autenticado: dados operacionais,
+                // como o responsável pelo jogo, podem ser exibidos. O próprio
+                // domínio ainda oculta cancelados e campos internos.
+                'matches' => matchList($date, false, $user),
                 'goalLimit' => 2,
             ]);
         }
@@ -46,20 +49,20 @@ function handleSportsRoutes(string $action, array $body): void
     if (!in_array($action, $statisticActions, true)) return;
 
     $user = statisticsUser();
-    $limitedDate = !empty($user['limited']) ? scorekeeperRound() : null;
     if ($action === 'scoringRounds') {
         result([
-            'rounds' => array_values(array_filter(
-                allRounds(true),
-                fn($round) => empty($user['limited']) || $round['date'] === $limitedDate,
-            )),
+            // A ordenação decrescente de allRounds deixa a mais recente como padrão.
+            'rounds' => allRounds(!empty($user['limited'])),
         ]);
     }
     if ($action === 'statistics') {
-        if (!empty($user['limited']) && !$limitedDate) {
+        $requestedDate = (string) ($_GET['date'] ?? '');
+        if (!empty($user['limited']) && $requestedDate !== '' && !scorekeeperCanAccessRound($requestedDate))
+            fail('Este acesso permite consultar somente rodadas publicadas.', 403);
+        if (!empty($user['limited']) && !scorekeeperDefaultRound()) {
             result(['players' => [], 'teams' => [], 'events' => [], 'dates' => []]);
         }
-        $stats = statistics(!empty($user['limited']), $limitedDate ?? '');
+        $stats = statistics(!empty($user['limited']), $requestedDate);
         if (!empty($user['limited'])) {
             $ownIds = array_column(
                 rows('SELECT id FROM stat_events WHERE created_by=?', [$user['id']]),

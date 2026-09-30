@@ -90,8 +90,8 @@ function recordStatistic(array $b, array $user): never
     if (!empty($user['limited'])) {
         if (!scorekeeper())
             fail('A senha de lançamento mudou. Entre novamente.', 401);
-        if ($date !== scorekeeperRound())
-            fail('Esta senha permite alterar apenas a próxima rodada publicada, incluindo a de hoje.', 403);
+        if (!scorekeeperCanAccessRound($date))
+            fail('Esta senha permite alterar apenas rodadas publicadas.', 403);
     }
     $existing = query('SELECT e.*,t.round_date,t.team_index FROM stat_events e JOIN stat_teams t ON t.id=e.team_id WHERE request_id=?', [$request])->fetch();
     if ($existing) {
@@ -134,8 +134,8 @@ function cancelStatistic(array $b, array $user): never
     if (!empty($user['limited'])) {
         if (!scorekeeper())
             fail('A senha de lançamento mudou. Entre novamente.', 401);
-        if ($event['created_by'] !== $user['id'] || $event['date'] !== scorekeeperRound())
-            fail('Você pode cancelar somente seus próprios lançamentos da próxima rodada publicada.', 403);
+        if ($event['created_by'] !== $user['id'] || !scorekeeperCanAccessRound($event['date']))
+            fail('Você pode cancelar somente seus próprios lançamentos de rodadas publicadas.', 403);
     }
     query('UPDATE stat_events SET cancelled_at=?,cancelled_by=?,cancel_reason=? WHERE id=? AND cancelled_at IS NULL', [gmdate('c'), $user['id'], $reason, $id]);
     database()->exec('COMMIT');

@@ -163,10 +163,13 @@ function statisticsUser(): array
     }
     return scorekeeper() ?? fail('Entre com seu login ou com a senha de lançamento.', 401);
 }
-function scorekeeperRound(): ?string
+function scorekeeperDefaultRound(): ?string
 {
-    $today = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
-    return query('SELECT date FROM rounds WHERE published=1 AND date>=? ORDER BY date LIMIT 1', [$today])->fetchColumn() ?: null;
+    return query('SELECT date FROM rounds WHERE published=1 ORDER BY date DESC LIMIT 1')->fetchColumn() ?: null;
+}
+function scorekeeperCanAccessRound(string $date): bool
+{
+    return (bool) query('SELECT 1 FROM rounds WHERE date=? AND published=1', [$date])->fetchColumn();
 }
 function master(array $user): bool
 {

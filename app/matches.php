@@ -5,7 +5,10 @@ function initializeMatches(PDO $db): void
 {
     $db->exec("CREATE TABLE IF NOT EXISTS matches (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, round_date TEXT NOT NULL, team_a TEXT NOT NULL, team_b TEXT NOT NULL, goal_limit INTEGER NOT NULL CHECK(goal_limit BETWEEN 1 AND 99), status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','finished','cancelled')), version INTEGER NOT NULL DEFAULT 1, created TEXT NOT NULL, created_by TEXT NOT NULL, author TEXT NOT NULL, finished TEXT, cancelled_reason TEXT, FOREIGN KEY(round_date) REFERENCES rounds(date), FOREIGN KEY(team_a) REFERENCES stat_teams(id), FOREIGN KEY(team_b) REFERENCES stat_teams(id), CHECK(team_a<>team_b))");
     $db->exec('CREATE INDEX IF NOT EXISTS idx_matches_round ON matches(round_date,created)');
-    $db->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_match_open_round ON matches(round_date) WHERE status='open'");
+    // Confrontos diferentes podem ser registrados ao mesmo tempo. Cada um é
+    // protegido pelo próprio id e version, sem um bloqueio global por rodada.
+    $db->exec('DROP INDEX IF EXISTS idx_match_open_round');
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_matches_open_round ON matches(round_date,status) WHERE status='open'");
     $db->exec("CREATE TABLE IF NOT EXISTS match_goals (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, match_id TEXT NOT NULL, team_id TEXT NOT NULL, player_id TEXT NOT NULL, own_goal INTEGER NOT NULL DEFAULT 0, assistant_id TEXT, created TEXT NOT NULL, created_by TEXT NOT NULL, author TEXT NOT NULL, cancelled_at TEXT, cancelled_by TEXT, FOREIGN KEY(match_id) REFERENCES matches(id), FOREIGN KEY(team_id,player_id) REFERENCES stat_members(team_id,player_id), FOREIGN KEY(team_id,assistant_id) REFERENCES stat_members(team_id,player_id))");
     $db->exec('CREATE INDEX IF NOT EXISTS idx_match_goals_match ON match_goals(match_id,created)');
     $db->exec('CREATE TABLE IF NOT EXISTS match_stat_links (event_id INTEGER PRIMARY KEY, match_id TEXT NOT NULL, FOREIGN KEY(event_id) REFERENCES stat_events(id), FOREIGN KEY(match_id) REFERENCES matches(id))');
@@ -20,8 +23,8 @@ function matchAccess(string $date, array $user): void
     if (!empty($user['limited'])) {
         if (!scorekeeper())
             fail('A senha foi alterada ou desativada. Entre novamente.', 401);
-        if ($date !== scorekeeperRound())
-            fail('Este acesso permite alterar somente a próxima rodada publicada, incluindo a de hoje.', 403);
+        if (!scorekeeperCanAccessRound($date))
+            fail('Este acesso permite alterar somente rodadas publicadas.', 403);
     }
 }
 
@@ -83,7 +86,9 @@ function matchList(string $date, bool $public = false, ?array $user = null): arr
         $m['can_cancel'] = $user && $m['status'] !== 'cancelled' && (empty($user['limited']) || ($m['status'] === 'open' && $m['created_by'] === $user['id']));
         $m['can_delete'] = $user && empty($user['limited']) && $m['status'] === 'cancelled';
         if ($public || !empty($user['limited']))
-            unset($m['request_id'], $m['created_by'], $m['author'], $m['can_delete']);
+            unset($m['request_id'], $m['created_by'], $m['can_delete']);
+        if ($public)
+            unset($m['author']);
     }
     unset($m);
     return $matches;
@@ -112,8 +117,6 @@ function mutateMatch(string $action, array $b, array $user): never
         $round = query('SELECT data FROM rounds WHERE date=?', [$date])->fetchColumn();
         if (!$round)
             fail('Salve os times desta rodada primeiro.', 404);
-        if (query("SELECT id FROM matches WHERE round_date=? AND status='open'", [$date])->fetch())
-            fail('Encerre ou cancele o jogo em andamento antes de cadastrar outro.', 409);
         $teams = json_decode($round, true)['teams'];
         $id = identifier();
         query('INSERT INTO matches(id,request_id,round_date,team_a,team_b,goal_limit,created,created_by,author) VALUES (?,?,?,?,?,?,?,?,?)', [$id, $request, $date, matchTeam($date, $a, $teams[$a]), matchTeam($date, $c, $teams[$c]), 2, gmdate('c'), $user['id'], $user['name']]);

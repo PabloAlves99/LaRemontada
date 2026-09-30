@@ -13,9 +13,9 @@ header('X-Content-Type-Options: nosniff');
     <title>La Remontada • Futebol de terça</title>
     <meta name="description" content="Os times, a turma e a história do nosso futebol de terça.">
     <link rel="icon" href="assets/favicon.svg">
-    <link rel="stylesheet" href="assets/style.css?v=10">
+    <link rel="stylesheet" href="assets/style.css?v=11">
     <link rel="stylesheet" href="assets/css/experience.css?v=1">
-    <script type="module" src="assets/app.js?v=20"></script>
+    <script type="module" src="assets/app.js?v=22"></script>
 </head>
 
 <body>

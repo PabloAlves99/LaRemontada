@@ -127,7 +127,7 @@ try {
     }
     if ($action === 'scorekeeperSettings' && $method === 'GET') {
         $config = setting('scorekeeper', []);
-        result(['enabled' => !empty($config['hash']), 'updated' => $config['updated'] ?? null, 'round' => scorekeeperRound()]);
+        result(['enabled' => !empty($config['hash']), 'updated' => $config['updated'] ?? null, 'round' => scorekeeperDefaultRound()]);
     }
     if ($action === 'admin') result(['players' => allPlayers(), 'reviews' => rows('SELECT * FROM reviews ORDER BY id DESC'), 'rounds' => allRounds(), 'invites' => rows('SELECT id,label,active,created FROM invites ORDER BY created DESC'), 'admins' => rows('SELECT id,email,name,owner,active FROM admins ORDER BY owner DESC,name'), 'keepers' => setting('keepers', ['', '', '']), 'rules' => setting('rules', ['weak' => 2, 'separatePivot' => true, 'history' => 6]), 'attendance' => rows('SELECT round_date,player_id,status FROM attendance ORDER BY round_date DESC'), 'attendanceStats' => attendanceStats()]);
     if ($action === 'backup') {

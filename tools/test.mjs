@@ -892,10 +892,12 @@ try {
   });
   const limitedRounds = (await scoringReq("scoringRounds")).data;
   check(
-    limitedRounds.rounds.length === 1 &&
-      limitedRounds.rounds[0].date === statDate &&
+    limitedRounds.rounds.length === 3 &&
+      limitedRounds.rounds[0].date === statLaterDate &&
+      limitedRounds.rounds.some((round) => round.date === statDate) &&
+      limitedRounds.rounds.some((round) => round.date === "2001-01-01") &&
       !JSON.stringify(limitedRounds).includes("scores"),
-    "Anotador vê somente próxima rodada, sem avaliações",
+    "Anotador escolhe qualquer rodada publicada, sem avaliações",
   );
   check(
     (
@@ -905,7 +907,7 @@ try {
         requestId: "limited-past",
       })
     ).status === 403,
-    "Servidor bloqueia lançamento em rodada passada",
+    "Anotador não usa lançamento avulso em rodada anterior",
   );
   check(
     (
@@ -915,7 +917,7 @@ try {
         requestId: "limited-future",
       })
     ).status === 403,
-    "Servidor bloqueia rodada futura além da próxima",
+    "Anotador não usa lançamento avulso em outra rodada",
   );
   const pastEvent = await req("statAdd", {
     ...event,
@@ -975,12 +977,12 @@ try {
         teamB: 1,
         requestId: "match-past",
       })
-    ).status === 403,
-    "Anotador não cria confronto no passado",
+    ).status === 200,
+    "Anotador cria confronto em rodada publicada anterior",
   );
   check(
-    (await scoringReq("matches&date=2001-01-01")).status === 403,
-    "Anotador não acessa confrontos passados",
+    (await scoringReq("matches&date=2001-01-01")).status === 200,
+    "Anotador acessa confronto de rodada publicada anterior",
   );
   check(
     (
@@ -990,8 +992,8 @@ try {
         teamB: 1,
         requestId: "match-later",
       })
-    ).status === 403,
-    "Anotador não cria confronto além da próxima rodada",
+    ).status === 200,
+    "Anotador cria confronto em outra rodada publicada",
   );
   check(
     (
@@ -1017,14 +1019,35 @@ try {
       createdMatch.data.id,
     "Reenvio não duplica confronto",
   );
+  const anotherOpen = await scoringReq("matchCreate", {
+    date: statDate,
+    teamA: 1,
+    teamB: 2,
+    requestId: "another-open",
+  });
+  check(
+    anotherOpen.status === 200 && anotherOpen.data.id !== createdMatch.data.id,
+    "Dois responsáveis podem abrir confrontos diferentes",
+  );
+  const simultaneousMatches = await scoringReq("matches&date=" + statDate);
+  check(
+    simultaneousMatches.data.matches.filter((m) => m.status === "open")
+      .length === 2 &&
+      simultaneousMatches.data.matches.every((m) => m.author),
+    "Jogos em aberto informam o responsável",
+  );
+  const extraMatch = simultaneousMatches.data.matches.find(
+    (m) => m.id === anotherOpen.data.id,
+  );
   check(
     (
-      await scoringReq("matchCreate", {
-        ...matchInput,
-        requestId: "another-open",
+      await scoringReq("matchCancel", {
+        matchId: extraMatch.id,
+        version: extraMatch.version,
+        reason: "Fim do teste simultâneo",
       })
-    ).status === 409,
-    "Um jogo aberto por rodada",
+    ).status === 200,
+    "Responsável pode cancelar o confronto simultâneo",
   );
   let match = (await scoringReq("matches&date=" + statDate)).data.matches[0];
   const getMatch = async (id) =>
