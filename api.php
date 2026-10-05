@@ -122,7 +122,7 @@ try {
         if ($method==='GET') result(['goalLimit'=>2,'fixed'=>true]);
         postOnly();
         $limit = $b['goalLimit']??null;
-        if ($limit !== 2) fail('O limite dos confrontos é fixo em 2 gols.');
+        if ($limit !== 2) fail('O limite dos confrontos é fixo em 2 gols por time.');
         result(['ok'=>true]);
     }
     if ($action === 'scorekeeperSettings' && $method === 'GET') {
@@ -135,7 +135,7 @@ try {
         $file = $dir . '/backup-' . identifier() . '.sqlite';
         database()->exec("VACUUM INTO " . database()->quote($file));
         header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="LaRemontada-' . date('Y-m-d') . '.sqlite"');
+        header('Content-Disposition: attachment; filename="terca-varzea-clube-' . date('Y-m-d') . '.sqlite"');
         readfile($file);
         unlink($file);
         exit;
@@ -355,6 +355,6 @@ try {
     }
     fail('Operação não encontrada.', 404);
 } catch (Throwable $e) {
-    error_log('La Remontada: ' . $e->getMessage());
+    error_log('Terça Várzea Clube: ' . $e->getMessage());
     fail('Não foi possível concluir. Seus campos foram mantidos; tente novamente.', 500);
 }

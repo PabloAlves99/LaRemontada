@@ -185,7 +185,7 @@ export function teamsText(round) {
   const date =
     parts.length === 3 ? parts[2] + "/" + parts[1] + "/" + parts[0] : "";
   return [
-    "⚽ LA REMONTADA",
+    "⚽ TERÇA VÁRZEA CLUBE",
     date,
     ...round.teams.map((team, i) =>
       [

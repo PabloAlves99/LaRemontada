@@ -11,7 +11,7 @@ import {
   teamsText,
   normalizeRules,
   teamName,
-} from "./football.mjs?v=4";
+} from "./football.mjs?v=5";
 import {
   $,
   $$,
@@ -27,7 +27,7 @@ import {
   buildVotingText,
   downloadTeamCard as saveTeamCard,
   exportPlayersCsv,
-} from "./js/exports.js?v=1";
+} from "./js/exports.js?v=2";
 const params = new URLSearchParams(location.search),
   token = params.get("avaliar");
 const adminTabs = new Set([
@@ -191,7 +191,7 @@ function renderAuth() {
     (setup ? "O primeiro apito." : "De volta ao jogo.") +
     '</h1><p class="muted">' +
     (setup
-      ? "Crie sua senha para começar a organizar o La Remontada."
+      ? "Crie sua senha para começar a organizar o Terça Várzea Clube."
       : "Entre para organizar a próxima terça.") +
     '</p><div class="panel"><form id="authForm">' +
     (setup
@@ -243,7 +243,7 @@ function renderAuth() {
 }
 function header(title, subtitle, actions = "") {
   return (
-    '<div class="page-heading"><div><p class="eyebrow">LA REMONTADA / ORGANIZAÇÃO</p><h1>' +
+    '<div class="page-heading"><div><p class="eyebrow">TVC / ORGANIZAÇÃO</p><h1>' +
     title +
     '</h1><p class="muted">' +
     subtitle +
@@ -357,7 +357,7 @@ function teamCards(r, editable = false, privateView = false) {
     r.teams
       .map(
         (team, t) =>
-          '<article class="team"><div class="team-top"><div><span class="team-sub">LA REMONTADA</span><h3>' +
+          '<article class="team"><div class="team-top"><div><span class="team-sub">TVC</span><h3>' +
           teamName(t) +
           '</h3></div><span class="team-number">0' +
           (t + 1) +
@@ -1340,7 +1340,7 @@ function shareTeamsBase(r, withScores = false) {
   $("[data-action=shareTeams]").onclick = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "La Remontada", text });
+        await navigator.share({ title: "Terça Várzea Clube", text });
       } catch (e) {
         if (e.name !== "AbortError") await copy();
       }
@@ -1764,7 +1764,7 @@ async function renderMatchSettings() {
   const panel = document.createElement("section");
   panel.className = "panel";
   $("#content").append(panel);
-  panel.innerHTML = '<h2>Regras dos confrontos</h2><p><b>Limite fixo: 2 gols.</b></p><p class="muted">O jogo pode ser encerrado a qualquer momento. Nenhum time pode ultrapassar dois gols.</p>';
+  panel.innerHTML = '<h2>Regras dos confrontos</h2><p><b>Limite fixo: 2 gols por time.</b></p><p class="muted">O jogo pode ser encerrado a qualquer momento. Nenhum time pode ultrapassar dois gols.</p>';
 }
 async function renderScorerSettings() {
   const panel = document.createElement("section");
@@ -2470,7 +2470,7 @@ async function renderStatistics() {
     };
     $("#newMatch").onclick = () => {
       openModal(
-        `<h2>Cadastrar novo jogo</h2><p>${day(round.date)} · limite de ${payload.goalLimit} gols</p><form id="newMatchForm"><label class="field">Primeiro time<select name="teamA">${round.teams.map((_, i) => `<option value="${i}">${teamName(i)}</option>`).join("")}</select></label><label class="field">Segundo time<select name="teamB">${round.teams.map((_, i) => `<option value="${i}" ${i === 1 ? "selected" : ""}>${teamName(i)}</option>`).join("")}</select></label><button class="button primary">Criar confronto</button></form>`,
+        `<h2>Cadastrar novo jogo</h2><p>${day(round.date)} · limite de ${payload.goalLimit} gols por time</p><form id="newMatchForm"><label class="field">Primeiro time<select name="teamA">${round.teams.map((_, i) => `<option value="${i}">${teamName(i)}</option>`).join("")}</select></label><label class="field">Segundo time<select name="teamB">${round.teams.map((_, i) => `<option value="${i}" ${i === 1 ? "selected" : ""}>${teamName(i)}</option>`).join("")}</select></label><button class="button primary">Criar confronto</button></form>`,
       );
       $("#newMatchForm").onsubmit = async (e) => {
         e.preventDefault();
@@ -2488,16 +2488,17 @@ async function renderStatistics() {
     };
     if (!current) return;
     const active = current.status === "open";
-    const reached =
-      Math.max(...Object.values(current.score)) >= current.goal_limit;
+    const teamsAtLimit = current.teams.filter(
+      (t) => current.score[t.id] >= current.goal_limit,
+    );
     const finishable = active;
     const activeGoals = current.goals.filter((g) => !g.cancelled_at);
     const matchNumber =
       payload.matches.findIndex((m) => m.id === current.id) + 1;
     $("#matchEditor").innerHTML =
-      `<section class="match-scoreboard"><p class="eyebrow">JOGO ${matchNumber} · ${matchStatus(current).toUpperCase()}</p><div class="match-score"><span>${teamName(Number(current.teams[0].team_index))}</span><strong>${current.score[current.team_a]} <small>×</small> ${current.score[current.team_b]}</strong><span>${teamName(Number(current.teams[1].team_index))}</span></div><p>Limite deste jogo: ${current.goal_limit} gols${active ? " · Pode ser encerrado a qualquer momento." : ""}</p></section>
-      ${active && reached ? '<p class="notice">Limite atingido. Confira os lances e encerre o jogo para registrar o resultado.</p>' : ""}
-      <div class="match-team-grid">${current.teams.map((t) => `<section class="panel"><h2>${teamName(Number(t.team_index))}</h2>${t.members.map((p) => `<div class="stats-player"><div><b>${esc(p.name)}</b><small>${activeGoals.filter((g) => !g.own_goal && g.player_id === p.id && g.team_id === t.id).length} gols${Number(p.guest) ? " · Convidado, sem ranking individual" : ""}</small></div>${active ? `<div class="stats-buttons"><button class="button" data-match-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>+1 gol</button><button class="button" data-own-goal="${esc(p.id)}" data-team="${t.id}" ${reached ? "disabled" : ""}>Gol contra</button></div>` : ""}</div>`).join("")}</section>`).join("")}</div>
+      `<section class="match-scoreboard"><p class="eyebrow">JOGO ${matchNumber} · ${matchStatus(current).toUpperCase()}</p><div class="match-score"><span>${teamName(Number(current.teams[0].team_index))}</span><strong>${current.score[current.team_a]} <small>×</small> ${current.score[current.team_b]}</strong><span>${teamName(Number(current.teams[1].team_index))}</span></div><p>Limite por time: ${current.goal_limit} gols${active ? " · Pode ser encerrado a qualquer momento." : ""}</p></section>
+      ${active && teamsAtLimit.length ? `<p class="notice">${teamsAtLimit.map((t) => teamName(Number(t.team_index))).join(" e ")} atingiu o limite. O outro time ainda pode marcar.</p>` : ""}
+      <div class="match-team-grid">${current.teams.map((t) => { const opponent = current.teams.find((other) => other.id !== t.id); const canScore = current.score[t.id] < current.goal_limit; const canOwnGoal = current.score[opponent.id] < current.goal_limit; return `<section class="panel"><h2>${teamName(Number(t.team_index))}</h2>${t.members.map((p) => `<div class="stats-player"><div><b>${esc(p.name)}</b><small>${activeGoals.filter((g) => !g.own_goal && g.player_id === p.id && g.team_id === t.id).length} gols${Number(p.guest) ? " · Convidado, sem ranking individual" : ""}</small></div>${active ? `<div class="stats-buttons"><button class="button" data-match-goal="${esc(p.id)}" data-team="${t.id}" ${canScore ? "" : "disabled"}>+1 gol</button><button class="button" data-own-goal="${esc(p.id)}" data-team="${t.id}" ${canOwnGoal ? "" : "disabled"}>Gol contra</button></div>` : ""}</div>`).join("")}</section>`; }).join("")}</div>
       <section class="panel"><h2>Lances deste confronto</h2><p class="muted">Gol contra soma um ponto para o adversário e não entra na artilharia.</p>${
         current.goals.length
           ? current.goals
@@ -2623,7 +2624,7 @@ async function renderRankingPage() {
       );
     });
     app.innerHTML = `<main>
-      <div class="page-heading"><div><p class="eyebrow">LA REMONTADA / RANKING</p><h1>Ranking dos jogadores.</h1><p class="muted">Toda a turma, todos os números.</p></div><a class="button" href="./">Ver os times</a></div>
+      <div class="page-heading"><div><p class="eyebrow">TVC / RANKING</p><h1>Ranking dos jogadores.</h1><p class="muted">Toda a turma, todos os números.</p></div><a class="button" href="./">Ver os times</a></div>
       <div class="stats-toolbar"><p class="muted">Clique em uma coluna para ordenar. Clique novamente para inverter.</p><label class="field">Período<select id="rankPeriod"><option value="">Todas as datas</option>${stats.dates.map((d) => `<option value="${esc(d)}" ${period === d ? "selected" : ""}>${day(d)} de ${d.slice(0, 4)}</option>`).join("")}</select></label></div>
       <section class="panel"><div class="panel-head"><h2>Classificação geral</h2><span class="pill">${ranked.length} jogadores</span></div>
       ${ranked.length ? `<div class="table-wrap ranking-table-wrap" tabindex="0" role="region" aria-label="Ranking dos jogadores, role para ver todas as colunas"><table class="ranking-table" aria-describedby="rankExplanation"><thead><tr>${columns.map(([key, label]) => `<th scope="col" aria-sort="${sortKey === key ? (ascending ? "ascending" : "descending") : "none"}"><button class="rank-sort" data-sort="${key}">${label}<span aria-hidden="true">${sortKey === key ? (ascending ? "↑" : "↓") : "↕"}</span></button></th>`).join("")}</tr></thead><tbody>${ranked.map((p) => `<tr>${columns.map(([key]) => (key === "name" ? `<th scope="row">${esc(p.name)}</th>` : `<td${sortKey === key ? ' class="rank-selected"' : ""}>${Number(p[key])}</td>`)).join("")}</tr>`).join("")}</tbody></table></div>` : '<p class="muted">Nenhum jogador cadastrado ainda.</p>'}

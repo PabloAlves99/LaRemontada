@@ -88,6 +88,9 @@ body {
 .crest {
   box-shadow: inset 0 -4px 0 rgb(20 38 32 / 12%);
 }
+.brand-logo {
+  display: block;
+}
 
 .top-actions a:hover {
   border-color: var(--accent);

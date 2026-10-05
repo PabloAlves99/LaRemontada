@@ -3,7 +3,7 @@ import { formatDay, formatNumber } from "./ui.js?v=1";
 
 export function buildVotingText(round) {
   return [
-    "⚽ LA REMONTADA — PRÉVIA PARA VOTAÇÃO",
+    "⚽ TERÇA VÁRZEA CLUBE — PRÉVIA PARA VOTAÇÃO",
     formatDay(round.date),
     "Notas: média geral de cada jogador.",
     ...round.teams.map((team, index) =>
@@ -47,7 +47,7 @@ export function exportPlayersCsv(players, attendanceStats) {
       .join("\r\n");
   downloadBlob(
     new Blob([content], { type: "text/csv;charset=utf-8" }),
-    "la-remontada-estatisticas.csv",
+    "terca-varzea-clube-estatisticas.csv",
   );
 }
 
@@ -63,7 +63,7 @@ export function downloadTeamCard(round) {
   context.fillRect(0, 0, 1080, 1320);
   context.fillStyle = "#c9f96b";
   context.font = "800 38px Arial";
-  context.fillText("⚽  LA REMONTADA", 60, 85);
+  context.fillText("⚽  TERÇA VÁRZEA CLUBE", 60, 85);
   context.fillStyle = "#f4f9ed";
   context.font = "700 30px Arial";
   context.fillText(formatDay(round.date).toUpperCase(), 60, 132);
@@ -95,7 +95,7 @@ export function downloadTeamCard(round) {
 
   const link = document.createElement("a");
   link.href = canvas.toDataURL("image/png");
-  link.download = `la-remontada-${round.date}.png`;
+  link.download = `terca-varzea-clube-${round.date}.png`;
   link.click();
 }
 

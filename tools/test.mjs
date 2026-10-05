@@ -1115,8 +1115,13 @@ try {
         ownGoal: false,
         requestId: "after-limit",
       })
-    ).status === 409,
-    "Limite atingido bloqueia novos gols de ambos os times",
+    ).status === 200,
+    "Time adversário pode marcar após o outro atingir o limite",
+  );
+  match = await getMatch(match.id);
+  check(
+    match.score[match.team_a] === 2 && match.score[match.team_b] === 1,
+    "Limite de gols é aplicado separadamente a cada time",
   );
   const ownGoal = match.goals.find((g) => g.own_goal);
   check(
@@ -1148,7 +1153,7 @@ try {
   const finish = { matchId: match.id, version: match.version };
   check(
     (await scoringReq("matchFinish", finish)).status === 200,
-    "Encerrar 2 a 0 calcula resultado",
+    "Encerrar 2 a 1 calcula resultado",
   );
   check(
     (await scoringReq("matchFinish", finish)).status === 200,
@@ -1161,9 +1166,9 @@ try {
     "Ranking soma um gol normal e vitória do confronto",
   );
   check(
-    afterMatch.players.find((p) => p.id === outsider.id).goal === 0 &&
+    afterMatch.players.find((p) => p.id === outsider.id).goal === 1 &&
       afterMatch.players.find((p) => p.id === outsider.id).loss === 1,
-    "Gol contra não entra na artilharia e derrota é automática",
+    "Gol normal entra na artilharia, gol contra não, e derrota é automática",
   );
   check(
     (

@@ -8,5 +8,5 @@ $items = @('.htaccess', 'index.php', 'api.php', 'config.example.php', 'app', 'as
 foreach ($name in $items) {
     Copy-Item -LiteralPath (Join-Path $sourceDir $name) -Destination $destinationDir -Recurse -Force
 }
-Write-Host 'La Remontada instalado em C:\Apache24\htdocs\laRemontada'
+Write-Host 'Terça Várzea Clube instalado em C:\Apache24\htdocs\laRemontada'
 Write-Host 'Abra http://localhost:8090/laRemontada/?view=admin'

@@ -410,6 +410,12 @@ select:focus-visible {
   font-size: 13px;
   margin-top: 4px;
 }
+.brand-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
 .top-actions {
   display: flex;
   align-items: center;
@@ -1260,6 +1266,10 @@ input[type="date"] {
     width: 41px;
     height: 46px;
     font-size: 20px;
+  }
+  .brand-logo {
+    width: 56px;
+    height: 56px;
   }
   .top-actions a {
     font-size: 12px;

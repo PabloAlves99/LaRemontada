@@ -1,4 +1,4 @@
-# La Remontada
+# Terça Várzea Clube (TVC)
 
 Aplicativo local em PHP 8.1+ e SQLite, sem Node.js, npm ou serviços externos.
 

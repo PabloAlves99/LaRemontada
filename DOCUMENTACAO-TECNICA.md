@@ -1,4 +1,4 @@
-# Documentação técnica — La Remontada
+# Documentação técnica — Terça Várzea Clube (TVC)
 
 ## 1. Visão geral
 

@@ -13,7 +13,7 @@ function initializeMatches(PDO $db): void
     $db->exec('CREATE INDEX IF NOT EXISTS idx_match_goals_match ON match_goals(match_id,created)');
     $db->exec('CREATE TABLE IF NOT EXISTS match_stat_links (event_id INTEGER PRIMARY KEY, match_id TEXT NOT NULL, FOREIGN KEY(event_id) REFERENCES stat_events(id), FOREIGN KEY(match_id) REFERENCES matches(id))');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_match_stat_links_match ON match_stat_links(match_id)');
-    // O regulamento atual usa dois gols como teto. Confrontos já encerrados
+    // O regulamento atual usa dois gols por time como teto. Confrontos já encerrados
     // preservam o limite histórico; jogos ainda abertos passam a seguir a regra.
     $db->exec("UPDATE matches SET goal_limit=2 WHERE status='open' AND goal_limit<>2");
 }
@@ -159,8 +159,6 @@ function mutateMatch(string $action, array $b, array $user): never
         fail('Este jogo já foi encerrado ou cancelado.', 409);
     $score = matchScore($match);
     if ($action === 'matchGoal') {
-        if (max($score) >= (int) $match['goal_limit'])
-            fail('O limite de gols foi atingido. Confira os lances e encerre o jogo.', 409);
         $tid = $b['teamId'] ?? '';
         $pid = $b['playerId'] ?? '';
         if (!is_string($tid) || !is_string($pid) || !in_array($tid, [$match['team_a'], $match['team_b']], true))
@@ -170,6 +168,9 @@ function mutateMatch(string $action, array $b, array $user): never
         $own = $b['ownGoal'] ?? false;
         if (!is_bool($own))
             fail('Tipo de gol inválido.');
+        $credited = $own ? ($tid === $match['team_a'] ? $match['team_b'] : $match['team_a']) : $tid;
+        if ($score[$credited] >= (int) $match['goal_limit'])
+            fail('Este time atingiu o limite de gols. Confira os lances e encerre o jogo.', 409);
         query('INSERT INTO match_goals(id,request_id,match_id,team_id,player_id,own_goal,created,created_by,author) VALUES (?,?,?,?,?,?,?,?,?)', [identifier(), $request, $id, $tid, $pid, $own ? 1 : 0, gmdate('c'), $user['id'], $user['name']]);
     } elseif ($action === 'matchUndoGoal') {
         $gid = textValue($b['goalId'] ?? '', 40);
