@@ -202,7 +202,7 @@ function deleteMatch(array $b, array $user): never
     if (!empty($user['limited']))
         fail('Somente um administrador pode excluir confrontos.', 403);
     $id = textValue($b['matchId'] ?? '', 40);
-    $match = query('SELECT id,status,version FROM matches WHERE id=?', [$id])->fetch();
+    $match = query('SELECT id,round_date,status,version FROM matches WHERE id=?', [$id])->fetch();
     if (!$match)
         fail('Jogo não encontrado.', 404);
     if ($match['status'] !== 'cancelled')
@@ -219,6 +219,7 @@ function deleteMatch(array $b, array $user): never
             query('DELETE FROM stat_events WHERE id=?', [$eventId]);
         query('DELETE FROM match_goals WHERE match_id=?', [$id]);
         query('DELETE FROM matches WHERE id=?', [$id]);
+        releaseUnusedStatisticTeams($match['round_date']);
         database()->exec('COMMIT');
     } catch (Throwable $e) {
         if (database()->inTransaction())

@@ -345,7 +345,6 @@ try {
         if (!is_array($keepers) || count($keepers) !== 3) fail('Goleiros inválidos.');
         foreach ($keepers as $k) if (!is_string($k) || mb_strlen($k) > 100) fail('Goleiro inválido.');
         $old = query('SELECT updated,published FROM rounds WHERE date=?', [$date])->fetch();
-        guardStatisticFormation($date, $clean);
         if ($old && ($b['version'] ?? null) !== $old['updated']) fail('Esta rodada mudou em outra sessão. Reabra a rodada antes de salvar.', 409);
         $updated = gmdate('Y-m-d\TH:i:s') . '.' . bin2hex(random_bytes(4));
         $published = ($b['publish'] ?? false) ? 1 : 0;

@@ -2580,7 +2580,7 @@ async function renderStatistics() {
       $("#deleteMatch").onclick = () =>
         confirmAction(
           "Excluir confronto do banco",
-          "Esta exclusão é definitiva. O confronto cancelado e todos os seus lances serão removidos.",
+          "Esta exclusão é definitiva. O confronto cancelado, seus lances e resultados serão removidos. Sem outros lançamentos nesta formação, os times voltam a poder ser editados.",
           "matchDelete",
           base,
         );

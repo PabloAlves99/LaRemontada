@@ -142,13 +142,20 @@ function cancelStatistic(array $b, array $user): never
     result(['ok' => true]);
 }
 
-function guardStatisticFormation(string $date, array $teams): void
+// A formação é mantida enquanto existir algum lançamento ou confronto que a
+// consulte. Quando o administrador exclui definitivamente o último confronto,
+// o snapshot deixa de ser histórico e não deve impedir a edição da rodada.
+function releaseUnusedStatisticTeams(string $date): void
 {
-    foreach (rows('SELECT id,team_index FROM stat_teams WHERE round_date=?', [$date]) as $t) {
-        $saved = rows('SELECT player_id,guest FROM stat_members WHERE team_id=? ORDER BY player_id', [$t['id']]);
-        $next = array_map(fn($p) => ['player_id' => $p['id'], 'guest' => !empty($p['guest']) ? 1 : 0], $teams[$t['team_index']]);
-        usort($next, fn($a, $b) => strcmp($a['player_id'], $b['player_id']));
-        if ($saved != $next)
-            fail('Este time já possui histórico de estatísticas. Preserve sua formação e crie outra rodada para novos times.', 409);
+    $teamIds = array_column(rows(
+        'SELECT t.id FROM stat_teams t
+         WHERE t.round_date=?
+           AND NOT EXISTS (SELECT 1 FROM stat_events e WHERE e.team_id=t.id)
+           AND NOT EXISTS (SELECT 1 FROM matches m WHERE m.team_a=t.id OR m.team_b=t.id)',
+        [$date]
+    ), 'id');
+    foreach ($teamIds as $teamId) {
+        query('DELETE FROM stat_members WHERE team_id=?', [$teamId]);
+        query('DELETE FROM stat_teams WHERE id=?', [$teamId]);
     }
 }

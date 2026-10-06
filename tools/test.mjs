@@ -705,17 +705,17 @@ try {
   );
   const swapped = structuredClone(statTeams);
   [swapped[0][0], swapped[1][0]] = [swapped[1][0], swapped[0][0]];
+  const updatedHistoricalRound = await req("round", {
+    ...statRound,
+    teams: swapped,
+    version: statRound.updated,
+    publish: true,
+  });
   check(
-    (
-      await req("round", {
-        ...statRound,
-        teams: swapped,
-        version: statRound.updated,
-        publish: true,
-      })
-    ).status === 409,
-    "Formação com histórico não pode mudar",
+    updatedHistoricalRound.status === 200,
+    "Formação com histórico pode mudar sem alterar as estatísticas salvas",
   );
+  statRound = { ...statRound, updated: updatedHistoricalRound.data.updated };
   check(
     (await req("roundDelete", { date: statDate, version: statRound.updated }))
       .status === 409,
