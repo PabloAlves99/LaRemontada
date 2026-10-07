@@ -174,12 +174,9 @@ async function load() {
     }
     renderAdmin();
   } else {
-    if (params.get("view") === "ranking") {
-      await renderRankingPage();
-      return;
-    }
+    if (params.get("view") === "ranking") history.replaceState({}, "", "./");
     publicRounds = (await api("public")).rounds;
-    renderPublic();
+    await renderPublic();
   }
 }
 function renderAuth() {
@@ -1942,26 +1939,100 @@ function renderDrawPreferences() {
       renderSettings();
   };
 }
-function renderPublic() {
-  renderPublicBase();
-  const r = publicRounds.find((r) => r.date === publicDate) || publicRounds[0];
-  if (r && session.user) {
-    const actions = document.createElement("div");
-    actions.className = "public-share-actions";
-    const b = document.createElement("button");
-    b.className = "button dark";
-    b.textContent = "Copiar times";
-    b.onclick = () => shareTeams(r);
-    actions.append(b);
-    $("#app main").append(actions);
-  }
-  if (r) {
-    const summary = document.createElement("section");
-    summary.className = "public-round-summary";
-    summary.setAttribute("aria-label", "Resultados e histórico da rodada");
-    $("#app main").append(summary);
-    renderPublicRoundSummary(r, summary);
-  }
+async function renderPublic() {
+  $("#modeLink").textContent = "Área administrativa";
+  $("#modeLink").href = "?view=admin";
+  let stats = await api("ranking");
+  let period = "";
+  let sortKey = "rank";
+  let ascending = true;
+  app.innerHTML = `<main><section class="public-intro public-home-intro"><div><p class="eyebrow">FUTEBOL DE TERÇA</p><h1>Ranking da turma.</h1><p>Veja quem está em campo e acompanhe a classificação em um só lugar.</p></div>${publicRounds.length ? '<button class="button primary" id="openPublicRound">Ver times e resultados</button>' : ""}</section><section id="publicRanking" class="public-ranking" aria-label="Ranking dos jogadores"></section></main>`;
+
+  const renderRanking = () => {
+    const columns = [
+      ["rank", "Top"],
+      ["name", "Jogador"],
+      ["goal", "Gols"],
+      ["win", "Vitórias"],
+      ["draw", "Empates"],
+      ["loss", "Derrotas"],
+      ["confirmed", "Dias"],
+    ];
+    const standings = [...stats.players].sort(
+      (a, b) =>
+        Number(b.win) - Number(a.win) ||
+        Number(b.confirmed) - Number(a.confirmed) ||
+        Number(b.goal) - Number(a.goal) ||
+        Number(b.draw) - Number(a.draw) ||
+        Number(a.loss) - Number(b.loss) ||
+        a.name.localeCompare(b.name, "pt-BR"),
+    );
+    const rankByPlayer = new Map(standings.map((player, index) => [player.id, index + 1]));
+    const ranked = [...stats.players].sort((a, b) => {
+      if (sortKey === "rank")
+        return (rankByPlayer.get(a.id) - rankByPlayer.get(b.id)) * (ascending ? 1 : -1);
+      const comparison = sortKey === "name"
+        ? a.name.localeCompare(b.name, "pt-BR")
+        : Number(a[sortKey]) - Number(b[sortKey]);
+      return comparison * (ascending ? 1 : -1) || a.name.localeCompare(b.name, "pt-BR");
+    });
+    $("#publicRanking").innerHTML = `<div class="panel-head"><div><p class="eyebrow">CLASSIFICAÇÃO</p><h2>Ranking dos jogadores</h2></div><label class="field compact-field">Período<select id="publicRankPeriod"><option value="">Todas as datas</option>${stats.dates.map((d) => `<option value="${esc(d)}" ${period === d ? "selected" : ""}>${day(d)} de ${d.slice(0, 4)}</option>`).join("")}</select></label></div>${ranked.length ? `<div class="table-wrap public-ranking-wrap"><table class="public-ranking-table"><thead><tr>${columns.map(([key, label]) => `<th aria-sort="${sortKey === key ? (ascending ? "ascending" : "descending") : "none"}">${key === "rank" ? `<div class="rank-header-actions"><button class="public-rank-sort" data-public-sort="${key}">${label}<span aria-hidden="true">${sortKey === key ? (ascending ? "↑" : "↓") : "↕"}</span></button><button class="rank-info" type="button" data-rank-info aria-label="Ver critérios do melhor da pelada">i</button></div>` : `<button class="public-rank-sort" data-public-sort="${key}">${label}<span aria-hidden="true">${sortKey === key ? (ascending ? "↑" : "↓") : "↕"}</span></button>`}</th>`).join("")}</tr></thead><tbody>${ranked.map((p) => { const position = rankByPlayer.get(p.id); return `<tr><td class="ranking-position ${position <= 3 ? `ranking-top ranking-top-${position}` : ""}" data-label="Top"><span class="ranking-position-content">${position <= 3 ? '<span class="rank-crown" aria-hidden="true">♛</span>' : ""}<span>${position}º</span></span></td><th scope="row">${esc(p.name)}</th><td data-label="Gols">${Number(p.goal)}</td><td data-label="Vitórias">${Number(p.win)}</td><td data-label="Empates">${Number(p.draw)}</td><td data-label="Derrotas">${Number(p.loss)}</td><td data-label="Dias confirmados">${Number(p.confirmed)}</td></tr>`; }).join("")}</tbody></table></div>` : '<p class="muted">Nenhum jogador cadastrado ainda.</p>'}`;
+    $$('[data-public-sort]').forEach((button) => {
+      button.onclick = () => {
+        const key = button.dataset.publicSort;
+        ascending = sortKey === key ? !ascending : key === "name";
+        sortKey = key;
+        renderRanking();
+      };
+    });
+    if ($("[data-rank-info]"))
+      $("[data-rank-info]").onclick = () =>
+        openModal('<h2>Melhor da pelada</h2><p>O Top é definido, nesta ordem, por: <b>vitórias</b>, <b>dias confirmados</b>, <b>gols</b>, <b>empates</b> e, por último, <b>menos derrotas</b>.</p>');
+    $("#publicRankPeriod").onchange = async (event) => {
+      const select = event.target;
+      select.disabled = true;
+      try {
+        period = select.value;
+        stats = await api("ranking", null, "&date=" + encodeURIComponent(period));
+        renderRanking();
+      } catch (err) {
+        toast(err.message);
+        select.disabled = false;
+      }
+    };
+  };
+  renderRanking();
+  if ($("#openPublicRound"))
+    $("#openPublicRound").onclick = () => openPublicRoundModal(publicDate);
+}
+
+function openPublicRoundModal(selectedDate = "") {
+  let selectedRound =
+    publicRounds.find((round) => round.date === selectedDate) || publicRounds[0];
+  openModal(`<section class="public-round-modal"><p class="eyebrow">TIMES E RESULTADOS</p><h2>Rodada publicada</h2><label class="field">Data da rodada<select id="publicModalRound">${publicRounds.map((round) => `<option value="${esc(round.date)}" ${round.date === selectedRound.date ? "selected" : ""}>${day(round.date)} de ${round.date.slice(0, 4)}</option>`).join("")}</select></label><div id="publicRoundModalContent" aria-live="polite"></div></section>`);
+  const renderRound = async () => {
+    const target = $("#publicRoundModalContent");
+    target.innerHTML = '<p class="muted" role="status">Carregando rodada…</p>';
+    try {
+      const [stats, games] = await Promise.all([
+        api("ranking", null, "&date=" + encodeURIComponent(selectedRound.date)),
+        api("publicMatches", null, "&date=" + encodeURIComponent(selectedRound.date)),
+      ]);
+      if (!target.isConnected) return;
+      const dateLabel = `${day(selectedRound.date)} de ${selectedRound.date.slice(0, 4)}`;
+      target.innerHTML = `<section class="round-results"><h3>Resultados por formação · ${dateLabel}</h3><div class="table-wrap"><table><thead><tr><th>Time</th><th>V</th><th>E</th><th>D</th></tr></thead><tbody>${selectedRound.teams.map((members, index) => {
+        const team = stats.teams.find((item) => Number(item.team_index) === index);
+        return `<tr><th scope="row">${teamName(index)}</th><td>${team?.win || 0}</td><td>${team?.draw || 0}</td><td>${team?.loss || 0}</td></tr>`;
+      }).join("")}</tbody></table></div></section><section class="modal-team-cards"><h3>Times · ${dateLabel}</h3>${teamCards(selectedRound, false, false)}</section><details class="panel public-match-details"><summary>Confrontos do dia · ${dateLabel}</summary>${publicMatchCards(games.matches)}</details>`;
+    } catch (err) {
+      if (target.isConnected) target.innerHTML = `<p role="alert">${esc(err.message)}</p>`;
+    }
+  };
+  $("#publicModalRound").onchange = (event) => {
+    selectedRound = publicRounds.find((round) => round.date === event.target.value);
+    renderRound();
+  };
+  renderRound();
 }
 
 async function renderPublicRoundSummary(round, target) {
@@ -1980,8 +2051,7 @@ async function renderPublicRoundSummary(round, target) {
           const team = stats.teams.find((t) => Number(t.team_index) === index);
           return `<tr><td><b>${teamName(index)}</b><details><summary>Jogadores</summary>${members.map((p) => esc(p.name)).join(", ")}</details></td><td>${team?.win || 0}</td><td>${team?.draw || 0}</td><td>${team?.loss || 0}</td></tr>`;
         })
-        .join("")}</tbody></table></div></details>
-      <details class="panel"><summary>Histórico de lançamentos · ${dateLabel}</summary>${statHistory(stats.events)}</details>`;
+        .join("")}</tbody></table></div></details>`;
   } catch (err) {
     if (!target.isConnected) return;
     target.innerHTML = `<p role="alert">${esc(err.message)}</p><button class="button">Tentar novamente</button>`;

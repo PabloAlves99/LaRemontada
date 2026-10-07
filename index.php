@@ -13,9 +13,9 @@ header('X-Content-Type-Options: nosniff');
     <title>Terça Várzea Clube • Futebol de terça</title>
     <meta name="description" content="Os times, a turma e a história do nosso futebol de terça.">
     <link rel="icon" type="image/png" href="assets/tvc-icon.png">
-    <link rel="stylesheet" href="assets/style.css?v=12">
+    <link rel="stylesheet" href="assets/style.css?v=13">
     <link rel="stylesheet" href="assets/css/experience.css?v=2">
-    <script type="module" src="assets/app.js?v=23"></script>
+    <script type="module" src="assets/app.js?v=24"></script>
 </head>
 
 <body>
