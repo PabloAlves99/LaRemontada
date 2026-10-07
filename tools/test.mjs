@@ -1183,6 +1183,41 @@ try {
   match = await getMatch(match.id);
   check(
     (
+      await scoringReq("matchReopen", {
+        matchId: match.id,
+        version: match.version,
+      })
+    ).status === 403,
+    "Anotador não reabre confronto encerrado",
+  );
+  check(
+    (
+      await req("matchReopen", {
+        matchId: match.id,
+        version: match.version,
+      })
+    ).status === 200,
+    "Administrador reabre confronto encerrado",
+  );
+  match = await getMatch(match.id);
+  check(
+    match.status === "open" &&
+      (await req("ranking")).data.players.find((p) => p.id === member.id).win ===
+        baseline.win,
+    "Reabrir confronto remove o resultado anterior até o novo encerramento",
+  );
+  check(
+    (
+      await req("matchFinish", {
+        matchId: match.id,
+        version: match.version,
+      })
+    ).status === 200,
+    "Administrador confirma confronto corrigido",
+  );
+  match = await getMatch(match.id);
+  check(
+    (
       await scoringReq("matchCancel", {
         matchId: match.id,
         version: match.version,

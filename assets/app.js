@@ -2509,7 +2509,7 @@ async function renderStatistics() {
               .join("")
           : "<p>Nenhum gol registrado.</p>"
       }</section>
-      <div class="actions">${active ? `<button class="button primary" id="finishMatch" ${finishable ? "" : "disabled"}>Encerrar jogo</button>` : ""}${current.can_cancel ? '<button class="button danger" id="cancelMatch">Cancelar confronto</button>' : ""}${current.can_delete ? '<button class="button danger" id="deleteMatch">Excluir do banco</button>' : ""}</div>${current.cancelled_reason ? `<p class="notice">Cancelado: ${esc(current.cancelled_reason)}</p>` : ""}`;
+      <div class="actions">${active ? `<button class="button primary" id="finishMatch" ${finishable ? "" : "disabled"}>Encerrar jogo</button>` : ""}${current.can_reopen ? '<button class="button" id="reopenMatch">Editar confronto</button>' : ""}${current.can_cancel ? '<button class="button danger" id="cancelMatch">Cancelar confronto</button>' : ""}${current.can_delete ? '<button class="button danger" id="deleteMatch">Excluir do banco</button>' : ""}</div>${current.cancelled_reason ? `<p class="notice">Cancelado: ${esc(current.cancelled_reason)}</p>` : ""}`;
     const base = { matchId: current.id, version: current.version };
     const confirmAction = (title, message, action, body) => {
       openModal(
@@ -2576,6 +2576,14 @@ async function renderStatistics() {
           });
         };
       };
+    if ($("#reopenMatch"))
+      $("#reopenMatch").onclick = () =>
+        confirmAction(
+          "Editar confronto encerrado",
+          "O confronto voltará a ficar aberto para correção. Os gols e o resultado serão recalculados ao encerrá-lo novamente. Somente administradores podem fazer isso.",
+          "matchReopen",
+          base,
+        );
     if ($("#deleteMatch"))
       $("#deleteMatch").onclick = () =>
         confirmAction(

@@ -85,6 +85,7 @@ function matchList(string $date, bool $public = false, ?array $user = null): arr
         unset($g);
         $m['can_cancel'] = $user && $m['status'] !== 'cancelled' && (empty($user['limited']) || ($m['status'] === 'open' && $m['created_by'] === $user['id']));
         $m['can_delete'] = $user && empty($user['limited']) && $m['status'] === 'cancelled';
+        $m['can_reopen'] = $user && empty($user['limited']) && $m['status'] === 'finished';
         if ($public || !empty($user['limited']))
             unset($m['request_id'], $m['created_by'], $m['can_delete']);
         if ($public)
@@ -144,6 +145,19 @@ function mutateMatch(string $action, array $b, array $user): never
     }
     if (($b['version'] ?? null) !== (int) $match['version'])
         fail('Este jogo mudou em outro acesso. Atualize antes de continuar.', 409);
+    if ($action === 'matchReopen') {
+        if (!empty($user['limited']))
+            fail('Somente um administrador pode editar um confronto encerrado.', 403);
+        if ($match['status'] !== 'finished')
+            fail('Somente confrontos encerrados podem ser reabertos.', 409);
+        $eventIds = array_column(rows('SELECT event_id FROM match_stat_links WHERE match_id=?', [$id]), 'event_id');
+        query('DELETE FROM match_stat_links WHERE match_id=?', [$id]);
+        foreach ($eventIds as $eventId)
+            query('DELETE FROM stat_events WHERE id=?', [$eventId]);
+        query("UPDATE matches SET status='open',finished=NULL,version=version+1 WHERE id=?", [$id]);
+        database()->exec('COMMIT');
+        result(['ok' => true, 'id' => $id]);
+    }
     if ($action === 'matchCancel') {
         if ($match['status'] === 'cancelled')
             fail('Jogo já cancelado.', 409);

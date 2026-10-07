@@ -25,6 +25,7 @@ function handleSportsRoutes(string $action, array $body): void
         'matchGoal',
         'matchUndoGoal',
         'matchFinish',
+        'matchReopen',
         'matchCancel',
         'matchDelete',
     ];
